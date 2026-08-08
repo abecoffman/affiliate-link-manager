@@ -15,6 +15,12 @@ composer.lock
 /tests/integration/vendor/
 /tests/integration/composer.lock
 
+# E2E tier (Playwright Test) -- saved login session, npm deps, HTML reports
+/node_modules/
+/tests/e2e/.auth/
+/playwright-report/
+/test-results/
+
 # Test artifacts
 .phpunit.result.cache
 /tests/tmp/
