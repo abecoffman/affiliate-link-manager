@@ -198,6 +198,51 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'ignored', $rows[0]['status'] );
 	}
 
+	public function test_scan_records_a_delta_of_new_and_now_stale_links_for_the_dashboard() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://go.shopmy.us/p-321">new item</a></p>',
+			)
+		);
+
+		$this->assertTrue( $this->scanner->scan_batch( 0, 10 )['done'] );
+
+		$delta = get_option( 'alm_last_scan_delta' );
+		$this->assertSame( 1, $delta['new_links'], 'The link discovered on this first scan is new.' );
+		$this->assertSame( 0, $delta['now_stale'], 'Nothing has gone stale yet.' );
+
+		// Back-date and remove the link, same as the stale-sweep test --
+		// the next scan should report it as newly stale, and report zero
+		// new links since nothing new was actually found this time.
+		// Both first_seen and last_seen need back-dating: current_time('mysql')
+		// is only second-granular, so a first_seen left at "now" could
+		// still land in the same second as this second scan's own
+		// scan_started_at and get miscounted as new by the >= comparison.
+		$rows = $this->get_links_for_post( $post_id );
+		global $wpdb;
+		$wpdb->update(
+			ALM_Install::table_name(),
+			array(
+				'first_seen' => '2020-01-01 00:00:00',
+				'last_seen'  => '2020-01-01 00:00:00',
+			),
+			array( 'id' => $rows[0]['id'] )
+		);
+		wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_content' => '<p>No more links here.</p>',
+			)
+		);
+
+		$this->assertTrue( $this->scanner->scan_batch( 0, 10 )['done'] );
+
+		$delta = get_option( 'alm_last_scan_delta' );
+		$this->assertSame( 0, $delta['new_links'], 'No new links were found on this second scan.' );
+		$this->assertSame( 1, $delta['now_stale'], 'The removed link should be counted as newly stale.' );
+	}
+
 	public function test_post_content_adapter_replace_link_persists_to_the_real_database() {
 		$post_id = self::factory()->post->create(
 			array(

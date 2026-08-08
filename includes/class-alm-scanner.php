@@ -115,7 +115,9 @@ class ALM_Scanner {
 		$done = count( $post_ids ) < $batch_size;
 
 		if ( $done ) {
-			$this->sweep_stale_links( get_option( 'alm_scan_started_at', '' ) );
+			$scan_started_at = get_option( 'alm_scan_started_at', '' );
+			$now_stale        = $this->sweep_stale_links( $scan_started_at );
+			$this->record_scan_delta( $scan_started_at, $now_stale );
 		}
 
 		return array(
@@ -137,11 +139,11 @@ class ALM_Scanner {
 	 * silently override that decision.
 	 *
 	 * @param string $scan_started_at MySQL datetime this scan run began.
-	 * @return void
+	 * @return int Number of rows that just transitioned to stale.
 	 */
 	private function sweep_stale_links( $scan_started_at ) {
 		if ( ! $scan_started_at ) {
-			return;
+			return 0;
 		}
 
 		global $wpdb;
@@ -149,6 +151,36 @@ class ALM_Scanner {
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; a bulk status-transition update, not a per-row query needing caching.
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET status = %s WHERE last_seen < %s AND status NOT IN (%s, %s)", ALM_Install::STATUS_STALE, $scan_started_at, ALM_Install::STATUS_STALE, ALM_Install::STATUS_IGNORED ) );
+
+		return (int) $wpdb->rows_affected;
+	}
+
+	/**
+	 * Records what changed in the scan that just finished -- read by the
+	 * Dashboard to show "X new links, Y now stale" instead of only a
+	 * bare timestamp.
+	 *
+	 * @param string $scan_started_at MySQL datetime this scan run began.
+	 * @param int    $now_stale       Rows sweep_stale_links() just flipped to stale.
+	 * @return void
+	 */
+	private function record_scan_delta( $scan_started_at, $now_stale ) {
+		$new_links = 0;
+
+		if ( $scan_started_at ) {
+			global $wpdb;
+			$table = ALM_Install::table_name();
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+			$new_links = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE first_seen >= %s", $scan_started_at ) );
+		}
+
+		update_option(
+			'alm_last_scan_delta',
+			array(
+				'new_links' => $new_links,
+				'now_stale' => $now_stale,
+			)
+		);
 	}
 
 	/**

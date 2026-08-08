@@ -113,6 +113,7 @@ class ALM_Install {
 		delete_option( self::DB_VERSION_OPTION );
 		delete_option( 'alm_last_scan_time' );
 		delete_option( 'alm_scan_started_at' );
+		delete_option( 'alm_last_scan_delta' );
 		delete_option( 'alm_auto_convert_unclassified' );
 		delete_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID );
 		delete_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID );

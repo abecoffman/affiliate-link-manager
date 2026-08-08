@@ -224,7 +224,9 @@ class ALM_Admin {
 	}
 
 	public function render_dashboard() {
-		$stats = $this->get_provider_stats();
+		$stats          = $this->get_provider_stats();
+		$needs_attention = $this->get_needs_attention_counts();
+		$scan_delta      = get_option( 'alm_last_scan_delta', array() );
 		require ALM_PATH . 'includes/views/dashboard.php';
 	}
 
@@ -271,5 +273,28 @@ class ALM_Admin {
 		}
 
 		return $stats;
+	}
+
+	/**
+	 * Unclassified and stale counts for the Dashboard's "Needs
+	 * attention" panel -- the two statuses that represent something an
+	 * admin might actually want to act on (active/convertible/ignored
+	 * don't belong here: active and convertible are fine as-is, ignored
+	 * was already deliberately dismissed).
+	 *
+	 * @return array<string,int>
+	 */
+	private function get_needs_attention_counts() {
+		global $wpdb;
+		$table = ALM_Install::table_name();
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
+		$rows      = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
+		$by_status = wp_list_pluck( $rows, 'total', 'status' );
+
+		return array(
+			ALM_Install::STATUS_UNCLASSIFIED => isset( $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] ) ? (int) $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] : 0,
+			ALM_Install::STATUS_STALE        => isset( $by_status[ ALM_Install::STATUS_STALE ] ) ? (int) $by_status[ ALM_Install::STATUS_STALE ] : 0,
+		);
 	}
 }

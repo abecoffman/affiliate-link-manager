@@ -74,6 +74,16 @@ test.describe('Affiliate Links admin screens', () => {
 		await page.getByRole('button', { name: 'Run Scan' }).click();
 		await expect(page.getByText(/Last scanned/)).toBeVisible({ timeout: 30000 });
 		await expect(page.getByText(/\d+ links? found/)).toBeVisible();
+		// First scan ever: the one fixture link is new, nothing is stale yet.
+		await expect(page.getByText('1 new, 0 now stale.')).toBeVisible();
+
+		// The fixture link's URL doesn't match any known provider, so it
+		// lands in "Needs attention" as unclassified -- and that badge
+		// should drill into Links pre-filtered to it.
+		const needsAttention = page.locator('.alm-card', { hasText: 'Needs attention' });
+		await expect(needsAttention.getByText('Unclassified')).toBeVisible();
+		await needsAttention.getByText('Unclassified').click();
+		await expect(page).toHaveURL(/status=unclassified/);
 	});
 
 	for (const screen of screens) {
