@@ -57,6 +57,17 @@ test.describe('Affiliate Links admin screens', () => {
 			'--post_title=ALM E2E fixture post',
 			`--post_content=<p><a href="${longUrl}">a very long product name that also needs to fit somewhere</a></p>`,
 		]);
+
+		// A second fixture, deliberately noise -- a social-platform link
+		// that should never surface as a candidate, to prove the split
+		// actually discriminates rather than marking everything unclassified
+		// as a candidate.
+		wp([
+			'post', 'create',
+			'--post_status=publish',
+			'--post_title=ALM E2E noise fixture post',
+			'--post_content=<p>Follow along on <a href="https://www.instagram.com/example">Instagram</a>.</p>',
+		]);
 	});
 
 	const screens = [
@@ -74,16 +85,18 @@ test.describe('Affiliate Links admin screens', () => {
 		await page.getByRole('button', { name: 'Run Scan' }).click();
 		await expect(page.getByText(/Last scanned/)).toBeVisible({ timeout: 30000 });
 		await expect(page.getByText(/\d+ links? found/)).toBeVisible();
-		// First scan ever: the one fixture link is new, nothing is stale yet.
-		await expect(page.getByText('1 new, 0 now stale.')).toBeVisible();
+		// First scan ever: both fixture links are new, nothing is stale yet.
+		await expect(page.getByText('2 new, 0 now stale.')).toBeVisible();
 
-		// The fixture link's URL doesn't match any known provider, so it
-		// lands in "Needs attention" as unclassified -- and that badge
-		// should drill into Links pre-filtered to it.
+		// The fixture link's URL doesn't match any known provider, but it
+		// also isn't noise (not internal, not social/reference, not an
+		// image) -- ALM_Candidate_Classifier surfaces it as a real
+		// candidate, and that badge should drill into Links pre-filtered
+		// to it.
 		const needsAttention = page.locator('.alm-card', { hasText: 'Needs attention' });
-		await expect(needsAttention.getByText('Unclassified')).toBeVisible();
-		await needsAttention.getByText('Unclassified').click();
-		await expect(page).toHaveURL(/status=unclassified/);
+		await expect(needsAttention.getByText('Candidate')).toBeVisible();
+		await needsAttention.getByText('Candidate').click();
+		await expect(page).toHaveURL(/status=convertible/);
 	});
 
 	for (const screen of screens) {

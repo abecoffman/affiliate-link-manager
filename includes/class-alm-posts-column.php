@@ -22,11 +22,11 @@ class ALM_Posts_Column {
 	private $scanner;
 
 	/**
-	 * Per-request cache of post_id => array{total:int,stale:int},
+	 * Per-request cache of post_id => array{total:int,stale:int,candidates:int},
 	 * populated once from the current list table's own result set the
 	 * first time a row is rendered -- avoids a query per row.
 	 *
-	 * @var array<int,array{total:int,stale:int}>|null
+	 * @var array<int,array{total:int,stale:int,candidates:int}>|null
 	 */
 	private $link_counts = null;
 
@@ -97,8 +97,9 @@ class ALM_Posts_Column {
 
 		$counts = $this->get_counts_for_current_screen();
 		$count  = isset( $counts[ $post_id ] ) ? $counts[ $post_id ] : array(
-			'total' => 0,
-			'stale' => 0,
+			'total'      => 0,
+			'stale'      => 0,
+			'candidates' => 0,
 		);
 
 		if ( 0 === $count['total'] ) {
@@ -116,6 +117,10 @@ class ALM_Posts_Column {
 
 		printf( '<a href="%s">%d</a>', esc_url( $url ), (int) $count['total'] );
 
+		if ( $count['candidates'] > 0 ) {
+			printf( ' <span class="alm-badge alm-badge-status-convertible">%d candidates</span>', (int) $count['candidates'] );
+		}
+
 		if ( $count['stale'] > 0 ) {
 			printf( ' <span class="alm-badge alm-badge-status-stale">%d stale</span>', (int) $count['stale'] );
 		}
@@ -124,9 +129,10 @@ class ALM_Posts_Column {
 	/**
 	 * One batched query for every post_id currently on the list screen's
 	 * page (the global $wp_query has already run by the time any column
-	 * is rendered), grouped by status so the stale sub-count comes free.
+	 * is rendered), grouped by status so the stale/candidate sub-counts
+	 * come free.
 	 *
-	 * @return array<int,array{total:int,stale:int}>
+	 * @return array<int,array{total:int,stale:int,candidates:int}>
 	 */
 	private function get_counts_for_current_screen() {
 		if ( null !== $this->link_counts ) {
@@ -155,14 +161,18 @@ class ALM_Posts_Column {
 
 			if ( ! isset( $this->link_counts[ $post_id ] ) ) {
 				$this->link_counts[ $post_id ] = array(
-					'total' => 0,
-					'stale' => 0,
+					'total'      => 0,
+					'stale'      => 0,
+					'candidates' => 0,
 				);
 			}
 
 			$this->link_counts[ $post_id ]['total'] += $total;
 			if ( ALM_Install::STATUS_STALE === $row['status'] ) {
 				$this->link_counts[ $post_id ]['stale'] += $total;
+			}
+			if ( ALM_Install::STATUS_CONVERTIBLE === $row['status'] ) {
+				$this->link_counts[ $post_id ]['candidates'] += $total;
 			}
 		}
 
@@ -205,8 +215,8 @@ class ALM_Posts_Column {
 		$order = isset( $_GET['order'] ) && 'asc' === strtolower( sanitize_key( wp_unslash( $_GET['order'] ) ) ) ? 'ASC' : 'DESC'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only sort direction, not a state-changing action.
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input.
-		$clauses['fields']  .= ", ( SELECT COUNT(*) FROM {$table} WHERE {$table}.post_id = {$wpdb->posts}.ID ) as alm_link_count";
-		$clauses['orderby']  = "alm_link_count {$order}, " . $clauses['orderby'];
+		$clauses['fields'] .= ", ( SELECT COUNT(*) FROM {$table} WHERE {$table}.post_id = {$wpdb->posts}.ID ) as alm_link_count";
+		$clauses['orderby'] = "alm_link_count {$order}, " . $clauses['orderby'];
 
 		return $clauses;
 	}

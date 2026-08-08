@@ -29,9 +29,22 @@ class ALM_Scanner {
 	 */
 	private $providers;
 
-	public function __construct( ALM_Adapter_Registry $adapters, ALM_Provider_Registry $providers ) {
-		$this->adapters  = $adapters;
-		$this->providers = $providers;
+	/**
+	 * @var ALM_Candidate_Classifier
+	 */
+	private $classifier;
+
+	/**
+	 * $classifier defaults to a plain instance rather than being
+	 * required -- keeps existing call sites (and this class's own
+	 * pre-existing integration tests) working unchanged. `new` isn't
+	 * usable directly as a parameter default pre-PHP 8.1, hence the
+	 * null-coalesce in the body instead of in the signature.
+	 */
+	public function __construct( ALM_Adapter_Registry $adapters, ALM_Provider_Registry $providers, ?ALM_Candidate_Classifier $classifier = null ) {
+		$this->adapters   = $adapters;
+		$this->providers  = $providers;
+		$this->classifier = $classifier ? $classifier : new ALM_Candidate_Classifier();
 	}
 
 	/**
@@ -116,7 +129,7 @@ class ALM_Scanner {
 
 		if ( $done ) {
 			$scan_started_at = get_option( 'alm_scan_started_at', '' );
-			$now_stale        = $this->sweep_stale_links( $scan_started_at );
+			$now_stale       = $this->sweep_stale_links( $scan_started_at );
 			$this->record_scan_delta( $scan_started_at, $now_stale );
 		}
 
@@ -228,7 +241,17 @@ class ALM_Scanner {
 			'last_seen'   => $now,
 		);
 
-		$classified_status = 'unclassified' === $provider_id ? ALM_Install::STATUS_UNCLASSIFIED : ALM_Install::STATUS_ACTIVE;
+		$classified_status = ALM_Install::STATUS_ACTIVE;
+		if ( 'unclassified' === $provider_id ) {
+			// Not matched by any real provider -- but that's not the same
+			// as "noise". A raw retailer link nobody has wrapped yet is
+			// exactly what this plugin exists to surface; a link back to
+			// this site's own nav or an Instagram icon is not. See
+			// ALM_Candidate_Classifier's own docblock for the reasoning.
+			$classified_status = $this->classifier->is_candidate( $link['url'] )
+				? ALM_Install::STATUS_CONVERTIBLE
+				: ALM_Install::STATUS_UNCLASSIFIED;
+		}
 
 		// Ignored is a deliberate, sticky admin decision -- re-discovering
 		// the same link on a later scan (including one that had gone

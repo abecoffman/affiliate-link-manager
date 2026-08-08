@@ -97,30 +97,30 @@ $total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 		</p>
 	</div>
 
-	<?php if ( $needs_attention[ ALM_Install::STATUS_UNCLASSIFIED ] > 0 || $needs_attention[ ALM_Install::STATUS_STALE ] > 0 ) : ?>
+	<?php if ( $needs_attention[ ALM_Install::STATUS_CONVERTIBLE ] > 0 || $needs_attention[ ALM_Install::STATUS_STALE ] > 0 ) : ?>
 		<div class="alm-card">
 			<div class="alm-card-header">
 				<h2><?php esc_html_e( 'Needs attention', 'affiliate-link-manager' ); ?></h2>
-				<p class="alm-card-lede"><?php esc_html_e( 'Links worth a look -- not classified by a known provider, or no longer found on the last scan.', 'affiliate-link-manager' ); ?></p>
+				<p class="alm-card-lede"><?php esc_html_e( 'Likely affiliate-link opportunities, and links no longer found on the last scan -- not the full unclassified pile, which is mostly navigation and social noise.', 'affiliate-link-manager' ); ?></p>
 			</div>
 
 			<table class="alm-provider-breakdown">
 				<tbody>
-					<?php if ( $needs_attention[ ALM_Install::STATUS_UNCLASSIFIED ] > 0 ) : ?>
+					<?php if ( $needs_attention[ ALM_Install::STATUS_CONVERTIBLE ] > 0 ) : ?>
 						<tr>
 							<td>
-								<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_UNCLASSIFIED ) ) ); ?>">
-									<span class="alm-badge alm-badge-status-unclassified"><?php esc_html_e( 'Unclassified', 'affiliate-link-manager' ); ?></span>
+								<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_CONVERTIBLE ) ) ); ?>">
+									<span class="alm-badge alm-badge-status-convertible"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_CONVERTIBLE ) ); ?></span>
 								</a>
 							</td>
-							<td><?php echo esc_html( $needs_attention[ ALM_Install::STATUS_UNCLASSIFIED ] ); ?></td>
+							<td><?php echo esc_html( $needs_attention[ ALM_Install::STATUS_CONVERTIBLE ] ); ?></td>
 						</tr>
 					<?php endif; ?>
 					<?php if ( $needs_attention[ ALM_Install::STATUS_STALE ] > 0 ) : ?>
 						<tr>
 							<td>
 								<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_STALE ) ) ); ?>">
-									<span class="alm-badge alm-badge-status-stale"><?php esc_html_e( 'Stale', 'affiliate-link-manager' ); ?></span>
+									<span class="alm-badge alm-badge-status-stale"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_STALE ) ); ?></span>
 								</a>
 							</td>
 							<td><?php echo esc_html( $needs_attention[ ALM_Install::STATUS_STALE ] ); ?></td>

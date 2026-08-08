@@ -39,6 +39,14 @@ class ALM_Posts_List_Table extends WP_List_Table {
 	 */
 	private $stale_counts = array();
 
+	/**
+	 * Per-post candidate-link counts, keyed by post_id -- mirrors
+	 * $stale_counts, populated by the same load_breakdowns() query.
+	 *
+	 * @var array<int,int>
+	 */
+	private $candidate_counts = array();
+
 	public function __construct( ALM_Provider_Registry $providers ) {
 		parent::__construct(
 			array(
@@ -217,6 +225,10 @@ class ALM_Posts_List_Table extends WP_List_Table {
 			if ( ALM_Install::STATUS_STALE === $row['status'] ) {
 				$this->stale_counts[ $post_id ] = ( isset( $this->stale_counts[ $post_id ] ) ? $this->stale_counts[ $post_id ] : 0 ) + $total;
 			}
+
+			if ( ALM_Install::STATUS_CONVERTIBLE === $row['status'] ) {
+				$this->candidate_counts[ $post_id ] = ( isset( $this->candidate_counts[ $post_id ] ) ? $this->candidate_counts[ $post_id ] : 0 ) + $total;
+			}
 		}
 	}
 
@@ -240,14 +252,14 @@ class ALM_Posts_List_Table extends WP_List_Table {
 
 		$actions = array();
 
-		$links_url               = add_query_arg(
+		$links_url             = add_query_arg(
 			array(
 				'page'    => ALM_Admin::MENU_SLUG . '-links',
 				'post_id' => $post_id,
 			),
 			admin_url( 'admin.php' )
 		);
-		$actions['view_links']   = sprintf( '<a href="%s">%s</a>', esc_url( $links_url ), esc_html__( 'View Links', 'affiliate-link-manager' ) );
+		$actions['view_links'] = sprintf( '<a href="%s">%s</a>', esc_url( $links_url ), esc_html__( 'View Links', 'affiliate-link-manager' ) );
 
 		if ( $edit_link ) {
 			$actions['edit'] = sprintf( '<a href="%s">%s</a>', esc_url( $edit_link ), esc_html__( 'Edit Post', 'affiliate-link-manager' ) );
@@ -292,6 +304,18 @@ class ALM_Posts_List_Table extends WP_List_Table {
 				esc_attr( $provider_id ),
 				$count,
 				esc_html( $label )
+			);
+		}
+
+		// Candidates before stale -- an opportunity worth chasing reads
+		// as more actionable than cleanup, and it's the badge this
+		// screen exists to make visible in the first place.
+		$candidates = isset( $this->candidate_counts[ $post_id ] ) ? $this->candidate_counts[ $post_id ] : 0;
+		if ( $candidates > 0 ) {
+			$badges[] = sprintf(
+				'<span class="alm-badge alm-badge-status-convertible">%d %s</span>',
+				$candidates,
+				esc_html__( 'candidates', 'affiliate-link-manager' )
 			);
 		}
 

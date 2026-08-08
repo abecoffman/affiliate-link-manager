@@ -99,6 +99,29 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
+	 * Single source of truth for status display text -- used by both
+	 * get_views() (the tab bar) and column_status() (the per-row badge),
+	 * so the two can never drift out of sync. STATUS_CONVERTIBLE reads
+	 * as "Candidates" here: it's a link ALM_Candidate_Classifier decided
+	 * looks like a real affiliate-link opportunity, not literally
+	 * "convertible" in the UI sense (nothing converts it automatically).
+	 *
+	 * @param string $status
+	 * @return string
+	 */
+	public static function status_label( $status ) {
+		$labels = array(
+			ALM_Install::STATUS_ACTIVE       => __( 'Active', 'affiliate-link-manager' ),
+			ALM_Install::STATUS_CONVERTIBLE  => __( 'Candidate', 'affiliate-link-manager' ),
+			ALM_Install::STATUS_UNCLASSIFIED => __( 'Unclassified', 'affiliate-link-manager' ),
+			ALM_Install::STATUS_STALE        => __( 'Stale', 'affiliate-link-manager' ),
+			ALM_Install::STATUS_IGNORED      => __( 'Ignored', 'affiliate-link-manager' ),
+		);
+
+		return isset( $labels[ $status ] ) ? $labels[ $status ] : ucfirst( $status );
+	}
+
+	/**
 	 * Status view-tabs above the table ("All | Active | Stale | ...",
 	 * same pattern as Posts' "All | Published | Drafts"). Empty
 	 * statuses are hidden rather than shown as a permanent "(0)" --
@@ -120,14 +143,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$current  = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '';
 		$base_url = remove_query_arg( array( 'status', 'paged' ) );
 
-		$labels = array(
-			''                               => __( 'All', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_ACTIVE       => __( 'Active', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_CONVERTIBLE  => __( 'Convertible', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_UNCLASSIFIED => __( 'Unclassified', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_STALE        => __( 'Stale', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_IGNORED      => __( 'Ignored', 'affiliate-link-manager' ),
-		);
+		$labels = array( '' => __( 'All', 'affiliate-link-manager' ) );
+		foreach ( array( ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_ACTIVE, ALM_Install::STATUS_UNCLASSIFIED, ALM_Install::STATUS_STALE, ALM_Install::STATUS_IGNORED ) as $status ) {
+			// Candidates listed first -- it's the tab most worth an
+			// editor's attention, not an alphabetical/schema accident.
+			$labels[ $status ] = self::status_label( $status );
+		}
 
 		$views = array();
 		foreach ( $labels as $status => $label ) {
@@ -417,7 +438,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * @return string
 	 */
 	public function column_status( $item ) {
-		return sprintf( '<span class="alm-badge alm-badge-status-%s">%s</span>', esc_attr( $item['status'] ), esc_html( ucfirst( $item['status'] ) ) );
+		return sprintf( '<span class="alm-badge alm-badge-status-%s">%s</span>', esc_attr( $item['status'] ), esc_html( self::status_label( $item['status'] ) ) );
 	}
 
 	/**

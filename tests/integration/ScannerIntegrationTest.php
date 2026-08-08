@@ -198,6 +198,25 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'ignored', $rows[0]['status'] );
 	}
 
+	/**
+	 * @covers ALM_Candidate_Classifier
+	 */
+	public function test_unclassified_links_are_split_into_candidates_and_noise() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://www.a-real-retailer.example/product">necklace</a> and '
+					. 'follow us on <a href="https://www.instagram.com/honestlywtf">Instagram</a>.</p>',
+			)
+		);
+
+		$this->assertTrue( $this->scanner->scan_batch( 0, 10 )['done'] );
+
+		$by_url = wp_list_pluck( $this->get_links_for_post( $post_id ), 'status', 'url' );
+		$this->assertSame( 'convertible', $by_url['https://www.a-real-retailer.example/product'], 'An unrecognized retailer link is a real candidate.' );
+		$this->assertSame( 'unclassified', $by_url['https://www.instagram.com/honestlywtf'], 'A social-platform link is noise, not a candidate.' );
+	}
+
 	public function test_scan_records_a_delta_of_new_and_now_stale_links_for_the_dashboard() {
 		$post_id = self::factory()->post->create(
 			array(

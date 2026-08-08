@@ -198,6 +198,15 @@ class ALM_Admin {
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was already verified in handle_settings_forms() before this method is called.
 		update_option( 'alm_auto_convert_unclassified', isset( $_POST['alm_auto_convert_unclassified'] ) ? '1' : '' );
 
+		// Read by ALM_Candidate_Classifier on every scan -- this is the
+		// site owner's own no-code way to teach it about domains only
+		// this site would know are noise (a sister blog, a magazine this
+		// site frequently credits as an image source, etc.), on top of
+		// the built-in universal defaults.
+		if ( isset( $_POST['alm_candidate_excluded_domains'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			update_option( 'alm_candidate_excluded_domains', sanitize_textarea_field( wp_unslash( $_POST['alm_candidate_excluded_domains'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		}
+
 		wp_safe_redirect( add_query_arg( 'updated', '1', wp_get_referer() ) );
 		exit;
 	}
@@ -224,7 +233,7 @@ class ALM_Admin {
 	}
 
 	public function render_dashboard() {
-		$stats          = $this->get_provider_stats();
+		$stats           = $this->get_provider_stats();
 		$needs_attention = $this->get_needs_attention_counts();
 		$scan_delta      = get_option( 'alm_last_scan_delta', array() );
 		require ALM_PATH . 'includes/views/dashboard.php';
@@ -276,11 +285,15 @@ class ALM_Admin {
 	}
 
 	/**
-	 * Unclassified and stale counts for the Dashboard's "Needs
-	 * attention" panel -- the two statuses that represent something an
-	 * admin might actually want to act on (active/convertible/ignored
-	 * don't belong here: active and convertible are fine as-is, ignored
-	 * was already deliberately dismissed).
+	 * Candidate and stale counts for the Dashboard's "Needs attention"
+	 * panel -- the two statuses that represent something an admin might
+	 * actually want to act on. Deliberately *not* plain "unclassified":
+	 * that bucket is mostly noise (internal nav, social icons, image
+	 * links) now that ALM_Candidate_Classifier splits the genuinely
+	 * promising links out into "convertible" -- surfacing the raw
+	 * unclassified count here would be exactly the noisy panel this was
+	 * built to avoid. Active/ignored don't belong here either: active is
+	 * fine as-is, ignored was already deliberately dismissed.
 	 *
 	 * @return array<string,int>
 	 */
@@ -293,8 +306,8 @@ class ALM_Admin {
 		$by_status = wp_list_pluck( $rows, 'total', 'status' );
 
 		return array(
-			ALM_Install::STATUS_UNCLASSIFIED => isset( $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] ) ? (int) $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] : 0,
-			ALM_Install::STATUS_STALE        => isset( $by_status[ ALM_Install::STATUS_STALE ] ) ? (int) $by_status[ ALM_Install::STATUS_STALE ] : 0,
+			ALM_Install::STATUS_CONVERTIBLE => isset( $by_status[ ALM_Install::STATUS_CONVERTIBLE ] ) ? (int) $by_status[ ALM_Install::STATUS_CONVERTIBLE ] : 0,
+			ALM_Install::STATUS_STALE       => isset( $by_status[ ALM_Install::STATUS_STALE ] ) ? (int) $by_status[ ALM_Install::STATUS_STALE ] : 0,
 		);
 	}
 }

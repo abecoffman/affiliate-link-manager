@@ -75,9 +75,13 @@
 	color: #007017;
 }
 
+/* Deliberately not the same blue as .alm-badge-shopmy -- a "Candidate"
+   status badge and a "ShopMy" provider badge can appear right next to
+   each other (e.g. the Posts screen's breakdown chip row) and need to
+   read as different things at a glance. */
 .alm-badge-status-convertible {
-	background: #d7ecff;
-	color: #2271b1;
+	background: #f0e6fb;
+	color: #6b3fa0;
 }
 
 .alm-badge-status-unclassified {

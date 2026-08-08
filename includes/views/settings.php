@@ -21,13 +21,22 @@ if ( ! defined( 'ABSPATH' ) ) {
 	<div class="alm-card">
 		<div class="alm-card-header">
 			<h2><?php esc_html_e( 'Settings', 'affiliate-link-manager' ); ?></h2>
-			<p class="alm-card-lede"><?php esc_html_e( 'Automation policy. Nothing here takes effect yet — these are saved for the upcoming convert/insert features.', 'affiliate-link-manager' ); ?></p>
+			<p class="alm-card-lede"><?php esc_html_e( 'Scan and classification behavior.', 'affiliate-link-manager' ); ?></p>
 		</div>
 
 		<form method="post">
 			<?php wp_nonce_field( ALM_Admin::SETTINGS_NONCE, 'alm_settings_nonce' ); ?>
 
 			<table class="form-table">
+				<tr>
+					<th scope="row"><label for="alm-excluded-domains"><?php esc_html_e( 'Additional excluded domains', 'affiliate-link-manager' ); ?></label></th>
+					<td>
+						<textarea id="alm-excluded-domains" name="alm_candidate_excluded_domains" rows="4" class="large-text code" placeholder="honestlyyum.com&#10;vogue.com&#10;architecturaldigest.com"><?php echo esc_textarea( get_option( 'alm_candidate_excluded_domains', '' ) ); ?></textarea>
+						<p class="description">
+							<?php esc_html_e( 'One domain per line (or comma-separated). Links to these are never counted as affiliate-link candidates -- use this for domains only your site would know are noise: a sister site, or a magazine/reference site your posts frequently credit as an image source. Built-in defaults already exclude social platforms, WordPress/Google infrastructure, and this site\'s own links. Takes effect on the next scan.', 'affiliate-link-manager' ); ?>
+						</p>
+					</td>
+				</tr>
 				<tr>
 					<th scope="row"><?php esc_html_e( 'Auto-convert', 'affiliate-link-manager' ); ?></th>
 					<td>
