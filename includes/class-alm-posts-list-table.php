@@ -160,7 +160,16 @@ class ALM_Posts_List_Table extends WP_List_Table {
 		$data_params = array_merge( $params, array( $per_page, $offset ) );
 		$this->items = $wpdb->get_results( $wpdb->prepare( $data_sql, $data_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
-		$this->load_breakdowns( wp_list_pluck( $this->items, 'post_id' ) );
+		$page_post_ids = wp_list_pluck( $this->items, 'post_id' );
+
+		// column_post() calls get_the_title()/get_edit_post_link()/
+		// get_permalink() per row, each an uncached get_post() query
+		// without this -- confirmed as a real N+1 at honestlywtf's scale
+		// (3,000+ posts), not just a theoretical one. Neither term nor
+		// meta caches are needed for any of those three calls.
+		_prime_post_caches( $page_post_ids, false, false );
+
+		$this->load_breakdowns( $page_post_ids );
 
 		$this->set_pagination_args(
 			array(

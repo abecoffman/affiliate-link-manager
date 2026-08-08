@@ -251,6 +251,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$data_params = array_merge( $params, array( $per_page, $offset ) );
 		$this->items = $wpdb->get_results( $wpdb->prepare( $data_sql, $data_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
+		// column_anchor_text()/column_post() call get_the_title()/
+		// get_edit_post_link()/get_permalink() per row, each an uncached
+		// get_post() query without this -- a real N+1 confirmed at
+		// honestlywtf's scale (37,000+ rows), not just a theoretical one.
+		_prime_post_caches( wp_list_pluck( $this->items, 'post_id' ), false, false );
+
 		$this->set_pagination_args(
 			array(
 				'total_items' => $total_items,
