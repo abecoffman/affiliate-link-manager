@@ -84,6 +84,15 @@ class ALM_Scanner {
 	 * }
 	 */
 	public function scan_batch( $offset, $batch_size ) {
+		// offset 0 is, by definition, the start of a fresh full scan --
+		// record when it began so the sweep step (once this run finishes)
+		// knows which rows weren't touched this time around. Stored as an
+		// option rather than threaded through the AJAX request payload so
+		// the client doesn't need to know or care about this bookkeeping.
+		if ( 0 === $offset ) {
+			update_option( 'alm_scan_started_at', current_time( 'mysql' ) );
+		}
+
 		$query = new WP_Query(
 			array(
 				'post_type'      => $this->get_scannable_post_types(),
@@ -103,11 +112,43 @@ class ALM_Scanner {
 			$links_found += $this->scan_post( (int) $post_id );
 		}
 
+		$done = count( $post_ids ) < $batch_size;
+
+		if ( $done ) {
+			$this->sweep_stale_links( get_option( 'alm_scan_started_at', '' ) );
+		}
+
 		return array(
-			'done'        => count( $post_ids ) < $batch_size,
+			'done'        => $done,
 			'next_offset' => $offset + count( $post_ids ),
 			'links_found' => $links_found,
 		);
+	}
+
+	/**
+	 * A link not re-discovered during the scan that just finished
+	 * (its last_seen still predates when this run started) either had
+	 * its link removed from the post, or the post itself is gone
+	 * (WP_Query with post_status=publish naturally excludes trashed/
+	 * deleted posts, so those links go stale here too, for free) --
+	 * either way, the content changed since the last time this row was
+	 * confirmed. Ignored links are deliberately left alone: an admin
+	 * already decided that one was fine, so it shouldn't be able to
+	 * silently override that decision.
+	 *
+	 * @param string $scan_started_at MySQL datetime this scan run began.
+	 * @return void
+	 */
+	private function sweep_stale_links( $scan_started_at ) {
+		if ( ! $scan_started_at ) {
+			return;
+		}
+
+		global $wpdb;
+		$table = ALM_Install::table_name();
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; a bulk status-transition update, not a per-row query needing caching.
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET status = %s WHERE last_seen < %s AND status NOT IN (%s, %s)", ALM_Install::STATUS_STALE, $scan_started_at, ALM_Install::STATUS_STALE, ALM_Install::STATUS_IGNORED ) );
 	}
 
 	/**
@@ -143,7 +184,7 @@ class ALM_Scanner {
 		$now   = current_time( 'mysql' );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- {$table} is a table name (not user input, can't be a placeholder); the real user-supplied values are all passed through prepare() below.
-		$existing_id = $wpdb->get_var( $wpdb->prepare( "SELECT id FROM {$table} WHERE post_id = %d AND adapter = %s AND location = %s", $post_id, $adapter_id, $link['location'] ) );
+		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT id, status FROM {$table} WHERE post_id = %d AND adapter = %s AND location = %s", $post_id, $adapter_id, $link['location'] ), ARRAY_A );
 
 		$data = array(
 			'post_id'     => $post_id,
@@ -152,13 +193,23 @@ class ALM_Scanner {
 			'location'    => $link['location'],
 			'url'         => $link['url'],
 			'anchor_text' => $link['anchor_text'],
-			'status'      => 'unclassified' === $provider_id ? 'unclassified' : 'active',
 			'last_seen'   => $now,
 		);
 
-		if ( $existing_id ) {
-			$wpdb->update( $table, $data, array( 'id' => $existing_id ) );
+		$classified_status = 'unclassified' === $provider_id ? ALM_Install::STATUS_UNCLASSIFIED : ALM_Install::STATUS_ACTIVE;
+
+		// Ignored is a deliberate, sticky admin decision -- re-discovering
+		// the same link on a later scan (including one that had gone
+		// stale and come back) shouldn't silently un-ignore it. Every
+		// other status is safe to recompute fresh on every sighting.
+		if ( ! $existing || ALM_Install::STATUS_IGNORED !== $existing['status'] ) {
+			$data['status'] = $classified_status;
+		}
+
+		if ( $existing ) {
+			$wpdb->update( $table, $data, array( 'id' => $existing['id'] ) );
 		} else {
+			$data['status']     = $classified_status;
 			$data['first_seen'] = $now;
 			$wpdb->insert( $table, $data );
 		}

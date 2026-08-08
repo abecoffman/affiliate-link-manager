@@ -12,7 +12,24 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ALM_Install {
 
 	const DB_VERSION_OPTION = 'alm_db_version';
-	const DB_VERSION        = '1.0.0';
+	const DB_VERSION        = '1.1.0';
+
+	/**
+	 * Real, documented status values -- the column itself is a plain
+	 * VARCHAR (dbDelta can't express a real ENUM diff-safely), these
+	 * constants are the single source of truth for what's valid.
+	 *
+	 * `stale` and `ignored` are deliberately distinct: stale means the
+	 * scanner didn't see this link the last time it ran (the content
+	 * changed); ignored means an admin explicitly dismissed it. Without
+	 * that distinction, a link an admin already reviewed and accepted
+	 * would keep re-flagging on every scan forever.
+	 */
+	const STATUS_ACTIVE       = 'active';
+	const STATUS_CONVERTIBLE  = 'convertible';
+	const STATUS_UNCLASSIFIED = 'unclassified';
+	const STATUS_STALE        = 'stale';
+	const STATUS_IGNORED      = 'ignored';
 
 	/**
 	 * Runs on plugin activation.
@@ -66,9 +83,12 @@ class ALM_Install {
 			status VARCHAR(20) NOT NULL DEFAULT 'active',
 			first_seen DATETIME NOT NULL,
 			last_seen DATETIME NOT NULL,
+			last_verified DATETIME NULL DEFAULT NULL,
+			dismissed_at DATETIME NULL DEFAULT NULL,
 			PRIMARY KEY  (id),
 			KEY post_id (post_id),
 			KEY provider (provider),
+			KEY status (status),
 			UNIQUE KEY natural_key (post_id, adapter, location(100))
 		) {$charset_collate};";
 
@@ -92,6 +112,7 @@ class ALM_Install {
 
 		delete_option( self::DB_VERSION_OPTION );
 		delete_option( 'alm_last_scan_time' );
+		delete_option( 'alm_scan_started_at' );
 		delete_option( 'alm_auto_convert_unclassified' );
 		delete_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID );
 		delete_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID );

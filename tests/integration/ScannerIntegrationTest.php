@@ -106,6 +106,98 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'https://go.shopmy.us/p-456', $rows[0]['url'] );
 	}
 
+	public function test_stale_link_sweep_marks_links_no_longer_found_after_a_full_scan() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://go.shopmy.us/p-999">old item</a></p>',
+			)
+		);
+
+		$this->assertTrue( $this->scanner->scan_batch( 0, 10 )['done'] );
+
+		$rows = $this->get_links_for_post( $post_id );
+		$this->assertCount( 1, $rows );
+		$this->assertSame( 'active', $rows[0]['status'] );
+
+		// Simulate "this link was found a while ago" by back-dating
+		// last_seen directly, rather than a real sleep() between two
+		// scans -- current_time('mysql') is only second-granular, so
+		// two scans run back-to-back in a fast test run could otherwise
+		// land on the exact same timestamp and never trigger the
+		// sweep's `last_seen < scan_started_at` comparison.
+		global $wpdb;
+		$wpdb->update( ALM_Install::table_name(), array( 'last_seen' => '2020-01-01 00:00:00' ), array( 'id' => $rows[0]['id'] ) );
+
+		// The editor removed the link from the post.
+		wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_content' => '<p>No more links here.</p>',
+			)
+		);
+
+		$this->assertTrue( $this->scanner->scan_batch( 0, 10 )['done'] );
+
+		$rows = $this->get_links_for_post( $post_id );
+		$this->assertCount( 1, $rows, 'The row should persist (not be deleted) -- just marked stale.' );
+		$this->assertSame( 'stale', $rows[0]['status'] );
+	}
+
+	public function test_stale_sweep_never_touches_ignored_links() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://go.shopmy.us/p-888">old item</a></p>',
+			)
+		);
+
+		$this->scanner->scan_batch( 0, 10 );
+		$rows = $this->get_links_for_post( $post_id );
+
+		global $wpdb;
+		$wpdb->update(
+			ALM_Install::table_name(),
+			array(
+				'status'    => 'ignored',
+				'last_seen' => '2020-01-01 00:00:00',
+			),
+			array( 'id' => $rows[0]['id'] )
+		);
+
+		wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_content' => '<p>No more links here.</p>',
+			)
+		);
+		$this->scanner->scan_batch( 0, 10 );
+
+		$rows = $this->get_links_for_post( $post_id );
+		$this->assertSame( 'ignored', $rows[0]['status'], 'An ignored link must not be swept to stale even once no longer found.' );
+	}
+
+	public function test_ignored_status_is_not_reverted_when_the_link_is_rediscovered() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://go.shopmy.us/p-777">item</a></p>',
+			)
+		);
+
+		$this->scanner->scan_batch( 0, 10 );
+		$rows = $this->get_links_for_post( $post_id );
+
+		global $wpdb;
+		$wpdb->update( ALM_Install::table_name(), array( 'status' => 'ignored' ), array( 'id' => $rows[0]['id'] ) );
+
+		// Re-scan with the link still present in the post -- ignored must stick.
+		$this->scanner->scan_batch( 0, 10 );
+
+		$rows = $this->get_links_for_post( $post_id );
+		$this->assertSame( 'ignored', $rows[0]['status'] );
+	}
+
 	public function test_post_content_adapter_replace_link_persists_to_the_real_database() {
 		$post_id = self::factory()->post->create(
 			array(
