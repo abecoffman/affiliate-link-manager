@@ -62,6 +62,7 @@ test.describe('Affiliate Links admin screens', () => {
 	const screens = [
 		{ name: 'Dashboard', path: '/wp-admin/admin.php?page=affiliate-links', heading: 'Affiliate Links' },
 		{ name: 'Links', path: '/wp-admin/admin.php?page=affiliate-links-links', heading: 'Affiliate Links' },
+		{ name: 'Posts', path: '/wp-admin/admin.php?page=affiliate-links-posts', heading: 'Posts' },
 		{ name: 'Providers', path: '/wp-admin/admin.php?page=affiliate-links-providers', heading: 'Affiliate Links' },
 		{ name: 'Settings', path: '/wp-admin/admin.php?page=affiliate-links-settings', heading: 'Affiliate Links' },
 	];
@@ -95,8 +96,37 @@ test.describe('Affiliate Links admin screens', () => {
 				await expect(page.locator('.alm-links-table')).toBeVisible();
 			}
 
+			if ('Posts' === screen.name) {
+				await expect(page.locator('table.alm_posts')).toBeVisible();
+			}
+
 			await expectNoHorizontalOverflow(page);
 			expect(consoleErrors).toEqual([]);
 		});
 	}
+
+	test('Posts screen "View Links" drills into the Links screen filtered to that post', async ({ page }) => {
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-posts');
+
+		// WP_List_Table's row actions (row_actions()) are core-styled with
+		// `.row-actions { position: relative; left: -9999em; }`, only
+		// brought on-screen on row hover/focus -- the same as every other
+		// WP core list table (Posts, Plugins, ...). Hover the row first,
+		// the way a real user would, instead of clicking a link core CSS
+		// is deliberately keeping off-canvas until then.
+		const row = page.getByRole('row', { name: /ALM E2E fixture post/ });
+		await expect(row).toBeVisible();
+		await row.hover();
+		await row.getByRole('link', { name: 'View Links' }).click();
+
+		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
+		await expect(page.getByText('Showing links found in:')).toBeVisible();
+		// The post title legitimately appears twice now -- once in the
+		// filter notice, once in the filtered row's own Post column.
+		await expect(page.getByText('ALM E2E fixture post')).toHaveCount(2);
+
+		// Clearing the filter goes back to the unfiltered Links screen.
+		await page.getByRole('link', { name: 'Clear' }).click();
+		await expect(page.getByText('Showing links found in:')).not.toBeVisible();
+	});
 });

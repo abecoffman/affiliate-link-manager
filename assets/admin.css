@@ -18,13 +18,6 @@
 	max-width: 900px;
 }
 
-/* The Links table has 4 real columns (including full URLs) that don't
-   fit 900px -- give that one card more room. Still bounded, not 100%,
-   so it doesn't feel unmoored on a wide monitor. */
-.alm-wrap .alm-card-wide {
-	max-width: 1400px;
-}
-
 .alm-card-header h2 {
 	margin: 0 0 4px;
 }
@@ -112,22 +105,40 @@
 	vertical-align: middle;
 }
 
-/* Defense in depth: even with the wider card and truncated URL column
-   below, a long enough Post title or Link text can still push this
-   past the card's width -- scroll inside this box rather than letting
-   the table break out of .alm-card and off the page (a real bug caught
-   only by actually rendering the page, not by reading the markup). */
+/* Defense in depth: even with the truncated URL column above, a long
+   enough post title, link text, or provider-breakdown chip row can
+   still push a table wider than the viewport -- scroll inside this
+   box (wraps the Links and Posts tables) rather than letting the page
+   itself gain horizontal scroll (a real bug, previously caught only by
+   actually rendering the page, not by reading the markup). */
 .alm-table-scroll {
 	overflow-x: auto;
 }
 
-.alm-url-cell {
-	max-width: 360px;
-}
-
-.alm-url-cell a {
+/* Applied directly to the <a> in column_url() -- there's no separate
+   wrapping element, the anchor itself is the cell's only content. */
+.alm-url-cell-link {
 	display: block;
+	max-width: 360px;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.alm-filtered-notice {
+	background: #f0f6fc;
+	border-left: 4px solid #72aee6;
+	padding: 8px 12px;
+	margin: 16px 0;
+}
+
+/* Posts screen: several small badges per row (one per provider, plus
+   the stale flag) -- wrap and space them like a chip row rather than
+   letting them run together or overflow the column. table.alm_posts
+   comes from WP_List_Table's own get_table_classes(), which appends
+   the 'plural' constructor arg as a class -- not an id we set. */
+table.alm_posts .column-breakdown {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
 }

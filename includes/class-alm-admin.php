@@ -88,6 +88,15 @@ class ALM_Admin {
 
 		add_submenu_page(
 			self::MENU_SLUG,
+			__( 'Posts', 'affiliate-link-manager' ),
+			__( 'Posts', 'affiliate-link-manager' ),
+			self::CAPABILITY,
+			self::MENU_SLUG . '-posts',
+			array( $this, 'render_posts' )
+		);
+
+		add_submenu_page(
+			self::MENU_SLUG,
 			__( 'Providers', 'affiliate-link-manager' ),
 			__( 'Providers', 'affiliate-link-manager' ),
 			self::CAPABILITY,
@@ -223,6 +232,12 @@ class ALM_Admin {
 		$list_table = new ALM_Links_List_Table( $this->providers );
 		$list_table->prepare_items();
 		require ALM_PATH . 'includes/views/links.php';
+	}
+
+	public function render_posts() {
+		$list_table = new ALM_Posts_List_Table( $this->providers );
+		$list_table->prepare_items();
+		require ALM_PATH . 'includes/views/posts.php';
 	}
 
 	public function render_providers() {

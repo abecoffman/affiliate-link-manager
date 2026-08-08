@@ -66,6 +66,18 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
+	 * Adds an alm-links-table hook class alongside WP_List_Table's own
+	 * defaults (widefat/striped/the 'plural' constructor arg) -- lets
+	 * admin.css and the E2E suite target this specific table without
+	 * depending on WP core's own generated class names.
+	 *
+	 * @return array<string>
+	 */
+	protected function get_table_classes() {
+		return array_merge( parent::get_table_classes(), array( 'alm-links-table' ) );
+	}
+
+	/**
 	 * @return array<string,array{0:string,1:bool}>
 	 */
 	protected function get_sortable_columns() {
@@ -204,6 +216,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 		if ( ! empty( $_GET['provider'] ) ) {
 			$where[]  = 'provider = %s';
 			$params[] = sanitize_key( wp_unslash( $_GET['provider'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter; how the Posts screen's "View Links" row action drills in.
+		if ( ! empty( $_GET['post_id'] ) ) {
+			$where[]  = 'post_id = %d';
+			$params[] = absint( wp_unslash( $_GET['post_id'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
