@@ -129,4 +129,15 @@ test.describe('Affiliate Links admin screens', () => {
 		await page.getByRole('link', { name: 'Clear' }).click();
 		await expect(page.getByText('Showing links found in:')).not.toBeVisible();
 	});
+
+	test('Posts list (edit.php) shows an Affiliate Links column that drills into filtered Links', async ({ page }) => {
+		await page.goto('/wp-admin/edit.php');
+
+		const row = page.locator('tbody#the-list tr', { hasText: 'ALM E2E fixture post' });
+		await expect(row.locator('td.column-alm_links')).toContainText('1');
+
+		await row.locator('td.column-alm_links a').click();
+		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
+		await expect(page.getByText('Showing links found in:')).toBeVisible();
+	});
 });

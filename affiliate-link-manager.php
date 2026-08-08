@@ -51,9 +51,13 @@ function alm_init() {
 	if ( is_admin() ) {
 		require_once ALM_PATH . 'includes/class-alm-links-list-table.php';
 		require_once ALM_PATH . 'includes/class-alm-posts-list-table.php';
+		require_once ALM_PATH . 'includes/class-alm-posts-column.php';
 
 		$admin = new ALM_Admin( $scanner, $providers, $adapters );
 		$admin->init();
+
+		$posts_column = new ALM_Posts_Column( $scanner );
+		$posts_column->init();
 	}
 }
 add_action( 'plugins_loaded', 'alm_init' );
