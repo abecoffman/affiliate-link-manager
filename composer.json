@@ -1,0 +1,38 @@
+{
+    "name": "abecoffman/affiliate-link-manager",
+    "description": "Finds, classifies, and manages affiliate links across post content, with a pluggable network-provider and content-adapter architecture (starting with ShopMy).",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Abe Coffman"
+        }
+    ],
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "wp-coding-standards/wpcs": "^3.0",
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "yoast/phpunit-polyfills": "^2.0",
+        "phpunit/phpunit": "^9.6 || ^10.5",
+        "mockery/mockery": "^1.6",
+        "brain/monkey": "^2.6",
+        "dealerdirect/phpcodesniffer-composer-installer": "^1.0"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ALM\\Tests\\": "tests/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
+    },
+    "scripts": {
+        "phpcs": "phpcs",
+        "phpcbf": "phpcbf",
+        "test": "phpunit"
+    }
+}

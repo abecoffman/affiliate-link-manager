@@ -1,0 +1,77 @@
+/*
+ * Admin UI styles for Affiliate Link Manager.
+ *
+ * Same visual language as the sibling webp-generator plugin's
+ * .wwg-card: a white surface, hairline border, faint shadow -- mirrors
+ * wp-admin's own .card component rather than inventing a different
+ * look, since this lives inside wp-admin's chrome. Colors are drawn
+ * from wp-admin's own palette.
+ */
+
+.alm-wrap .alm-card {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+	border-radius: 4px;
+	padding: 20px 24px;
+	margin: 20px 0;
+	max-width: 900px;
+}
+
+.alm-card-header h2 {
+	margin: 0 0 4px;
+}
+
+.alm-card-lede {
+	margin: 0 0 16px;
+	color: #646970;
+}
+
+.alm-total-count {
+	font-size: 20px;
+	font-weight: 600;
+	margin: 0 0 12px;
+}
+
+.alm-provider-breakdown {
+	margin-bottom: 16px;
+}
+
+.alm-provider-breakdown td {
+	padding: 4px 12px 4px 0;
+}
+
+.alm-badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 600;
+	background: #f0f0f1;
+	color: #50575e;
+}
+
+.alm-badge-shopmy {
+	background: #d7ecff;
+	color: #2271b1;
+}
+
+.alm-badge-rewardstyle {
+	background: #f2d9c0;
+	color: #8a4b08;
+}
+
+.alm-badge-unclassified {
+	background: #f0f0f1;
+	color: #646970;
+}
+
+.alm-scan-progress {
+	margin-left: 8px;
+	color: #646970;
+}
+
+.alm-links-table td,
+.alm-links-table th {
+	vertical-align: middle;
+}
