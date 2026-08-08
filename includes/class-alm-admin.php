@@ -69,7 +69,7 @@ class ALM_Admin {
 			array( $this, 'render_dashboard' )
 		);
 
-		add_submenu_page(
+		$links_hook = add_submenu_page(
 			self::MENU_SLUG,
 			__( 'Links', 'affiliate-link-manager' ),
 			__( 'Links', 'affiliate-link-manager' ),
@@ -77,6 +77,14 @@ class ALM_Admin {
 			self::MENU_SLUG . '-links',
 			array( $this, 'render_links' )
 		);
+
+		// Bulk/row actions (Ignore, Delete) redirect on success -- that
+		// has to happen before wp-admin's own header HTML starts
+		// outputting, which has already begun by the time render_links()
+		// itself runs. load-{hook} is the standard WP pattern for this
+		// (the same reason Posts/Plugins process their own bulk actions
+		// this early, not inside their list table's display path).
+		add_action( "load-{$links_hook}", array( $this, 'handle_links_bulk_action' ) );
 
 		add_submenu_page(
 			self::MENU_SLUG,
@@ -125,6 +133,17 @@ class ALM_Admin {
 				),
 			)
 		);
+	}
+
+	/**
+	 * Runs on the Links screen's load-{hook}, before any HTML output --
+	 * see register_menu() for why this can't happen inside render_links().
+	 *
+	 * @return void
+	 */
+	public function handle_links_bulk_action() {
+		$list_table = new ALM_Links_List_Table( $this->providers );
+		$list_table->process_bulk_action();
 	}
 
 	public function handle_scan_batch() {
@@ -201,8 +220,8 @@ class ALM_Admin {
 	}
 
 	public function render_links() {
-		$links     = $this->get_links_for_display();
-		$providers = $this->providers->get_providers();
+		$list_table = new ALM_Links_List_Table( $this->providers );
+		$list_table->prepare_items();
 		require ALM_PATH . 'includes/views/links.php';
 	}
 
@@ -237,16 +256,5 @@ class ALM_Admin {
 		}
 
 		return $stats;
-	}
-
-	/**
-	 * @return array[]
-	 */
-	private function get_links_for_display() {
-		global $wpdb;
-		$table = ALM_Install::table_name();
-
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only listing query.
-		return (array) $wpdb->get_results( "SELECT * FROM {$table} ORDER BY last_seen DESC LIMIT 500", ARRAY_A );
 	}
 }

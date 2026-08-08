@@ -73,6 +73,35 @@
 	color: #646970;
 }
 
+/* Status badges use a separate alm-badge-status-* prefix, not
+   alm-badge-* -- "unclassified" is both a provider fallback id and a
+   status value, and the two columns need to be able to disagree
+   (an unclassified-provider link is not necessarily stale/ignored). */
+.alm-badge-status-active {
+	background: #d7f0d7;
+	color: #007017;
+}
+
+.alm-badge-status-convertible {
+	background: #d7ecff;
+	color: #2271b1;
+}
+
+.alm-badge-status-unclassified {
+	background: #f0f0f1;
+	color: #646970;
+}
+
+.alm-badge-status-stale {
+	background: #fcf0d7;
+	color: #8a5a00;
+}
+
+.alm-badge-status-ignored {
+	background: #f0f0f1;
+	color: #a7aaad;
+}
+
 .alm-scan-progress {
 	margin-left: 8px;
 	color: #646970;
