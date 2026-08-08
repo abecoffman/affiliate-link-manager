@@ -18,6 +18,13 @@
 	max-width: 900px;
 }
 
+/* The Links table has 4 real columns (including full URLs) that don't
+   fit 900px -- give that one card more room. Still bounded, not 100%,
+   so it doesn't feel unmoored on a wide monitor. */
+.alm-wrap .alm-card-wide {
+	max-width: 1400px;
+}
+
 .alm-card-header h2 {
 	margin: 0 0 4px;
 }
@@ -74,4 +81,24 @@
 .alm-links-table td,
 .alm-links-table th {
 	vertical-align: middle;
+}
+
+/* Defense in depth: even with the wider card and truncated URL column
+   below, a long enough Post title or Link text can still push this
+   past the card's width -- scroll inside this box rather than letting
+   the table break out of .alm-card and off the page (a real bug caught
+   only by actually rendering the page, not by reading the markup). */
+.alm-table-scroll {
+	overflow-x: auto;
+}
+
+.alm-url-cell {
+	max-width: 360px;
+}
+
+.alm-url-cell a {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
