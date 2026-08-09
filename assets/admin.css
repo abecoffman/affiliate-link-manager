@@ -114,9 +114,19 @@
    still push a table wider than the viewport -- scroll inside this
    box (wraps the Links and Posts tables) rather than letting the page
    itself gain horizontal scroll (a real bug, previously caught only by
-   actually rendering the page, not by reading the markup). */
+   actually rendering the page, not by reading the markup).
+
+   The explicit width:100% is load-bearing, not decorative: a block
+   div with overflow-x:auto and no explicit width shrink-wraps to its
+   table's own intrinsic content width instead of filling its parent
+   -- confirmed by direct toggle-and-measure in a live browser, table-
+   layout:fixed + width:100% on the <table> inside is not enough on
+   its own. Without this, the table renders narrower than the page on
+   any screen wide enough that the content doesn't need the full
+   width, wasting a large block of the viewport for no reason. */
 .alm-table-scroll {
 	overflow-x: auto;
+	width: 100%;
 }
 
 /* Applied directly to the <a> in column_url() -- there's no separate

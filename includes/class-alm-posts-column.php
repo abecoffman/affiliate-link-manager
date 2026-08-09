@@ -118,7 +118,11 @@ class ALM_Posts_Column {
 		printf( '<a href="%s">%d</a>', esc_url( $url ), (int) $count['total'] );
 
 		if ( $count['candidates'] > 0 ) {
-			printf( ' <span class="alm-badge alm-badge-status-convertible">%d candidates</span>', (int) $count['candidates'] );
+			printf(
+				' <span class="alm-badge alm-badge-status-convertible">%d %s</span>',
+				(int) $count['candidates'],
+				esc_html( _n( 'candidate', 'candidates', $count['candidates'], 'affiliate-link-manager' ) )
+			);
 		}
 
 		if ( $count['stale'] > 0 ) {

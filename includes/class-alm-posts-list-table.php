@@ -214,6 +214,23 @@ class ALM_Posts_List_Table extends WP_List_Table {
 			$post_id = (int) $row['post_id'];
 			$total   = (int) $row['total'];
 
+			// Stale and candidate links get their own badges below, shown
+			// as flat totals rather than folded into the provider badge --
+			// so provider_counts only accumulates the "steady state"
+			// statuses. Otherwise a post showing "70 Unclassified" and
+			// "14 candidates" would visually imply 84 links when the real
+			// total (the Links column right next to it) is 70; this way
+			// the badges shown always literally sum to the row's total.
+			if ( ALM_Install::STATUS_STALE === $row['status'] ) {
+				$this->stale_counts[ $post_id ] = ( isset( $this->stale_counts[ $post_id ] ) ? $this->stale_counts[ $post_id ] : 0 ) + $total;
+				continue;
+			}
+
+			if ( ALM_Install::STATUS_CONVERTIBLE === $row['status'] ) {
+				$this->candidate_counts[ $post_id ] = ( isset( $this->candidate_counts[ $post_id ] ) ? $this->candidate_counts[ $post_id ] : 0 ) + $total;
+				continue;
+			}
+
 			if ( ! isset( $this->provider_counts[ $post_id ] ) ) {
 				$this->provider_counts[ $post_id ] = array();
 			}
@@ -221,14 +238,6 @@ class ALM_Posts_List_Table extends WP_List_Table {
 				$this->provider_counts[ $post_id ][ $row['provider'] ] = 0;
 			}
 			$this->provider_counts[ $post_id ][ $row['provider'] ] += $total;
-
-			if ( ALM_Install::STATUS_STALE === $row['status'] ) {
-				$this->stale_counts[ $post_id ] = ( isset( $this->stale_counts[ $post_id ] ) ? $this->stale_counts[ $post_id ] : 0 ) + $total;
-			}
-
-			if ( ALM_Install::STATUS_CONVERTIBLE === $row['status'] ) {
-				$this->candidate_counts[ $post_id ] = ( isset( $this->candidate_counts[ $post_id ] ) ? $this->candidate_counts[ $post_id ] : 0 ) + $total;
-			}
 		}
 	}
 
@@ -240,6 +249,22 @@ class ALM_Posts_List_Table extends WP_List_Table {
 	 * @param array $item
 	 * @return string
 	 */
+	/**
+	 * Same fix as ALM_Links_List_Table::handle_row_actions() -- see its
+	 * docblock. row_actions(), called below from column_post(), already
+	 * appends its own toggle-row button on this WP core version;
+	 * without this override, single_row_columns() adds a second,
+	 * identical one.
+	 *
+	 * @param object|array $item
+	 * @param string       $column_name
+	 * @param string       $primary
+	 * @return string
+	 */
+	protected function handle_row_actions( $item, $column_name, $primary ) {
+		return '';
+	}
+
 	public function column_post( $item ) {
 		$post_id = (int) $item['post_id'];
 		$title   = get_the_title( $post_id );
@@ -315,7 +340,7 @@ class ALM_Posts_List_Table extends WP_List_Table {
 			$badges[] = sprintf(
 				'<span class="alm-badge alm-badge-status-convertible">%d %s</span>',
 				$candidates,
-				esc_html__( 'candidates', 'affiliate-link-manager' )
+				esc_html( _n( 'candidate', 'candidates', $candidates, 'affiliate-link-manager' ) )
 			);
 		}
 

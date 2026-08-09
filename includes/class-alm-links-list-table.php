@@ -49,8 +49,18 @@ class ALM_Links_List_Table extends WP_List_Table {
 	public function get_columns() {
 		return array(
 			'cb'          => '<input type="checkbox" />',
-			'provider'    => __( 'Provider', 'affiliate-link-manager' ),
+			// anchor_text (the primary column, see get_primary_column_name())
+			// has to be the first column after the checkbox, not just
+			// visually -- WP core's own responsive CSS hides every column
+			// at <=782px via a `th.column-primary ~ th` *following*-sibling
+			// selector. A primary column that isn't first can never match
+			// that selector for the columns before it, so they're stuck
+			// half-rendered on narrow screens instead of collapsing into
+			// the row card like every other WP core list table. Confirmed
+			// live: Provider was ahead of Link text here originally, and
+			// broke exactly this way at mobile widths.
 			'anchor_text' => __( 'Link text', 'affiliate-link-manager' ),
+			'provider'    => __( 'Provider', 'affiliate-link-manager' ),
 			'url'         => __( 'URL', 'affiliate-link-manager' ),
 			'post'        => __( 'Post', 'affiliate-link-manager' ),
 			'status'      => __( 'Status', 'affiliate-link-manager' ),
@@ -368,6 +378,29 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * @param array $item
 	 * @return string
 	 */
+	/**
+	 * On this WP core version, row_actions() (called below, from
+	 * column_anchor_text()) already appends its own "Show more details"
+	 * toggle-row button as part of its return value -- but
+	 * single_row_columns() *also* unconditionally appends one of its own
+	 * for the primary column via this method, producing two identical
+	 * buttons in the same cell. Confirmed by diffing raw server-rendered
+	 * HTML (not just the live DOM) against WP core's own
+	 * class-wp-list-table.php source -- both row_actions() and
+	 * handle_row_actions() independently emit the button. Deferring
+	 * entirely to row_actions()'s own copy here, rather than trying to
+	 * suppress it there (that method belongs to WP core, not this
+	 * plugin).
+	 *
+	 * @param object|array $item
+	 * @param string       $column_name
+	 * @param string       $primary
+	 * @return string
+	 */
+	protected function handle_row_actions( $item, $column_name, $primary ) {
+		return '';
+	}
+
 	public function column_anchor_text( $item ) {
 		$actions = array();
 
@@ -385,10 +418,21 @@ class ALM_Links_List_Table extends WP_List_Table {
 			$actions['ignore'] = sprintf( '<a href="%s">%s</a>', esc_url( $this->row_action_url( 'ignore', $item['id'] ) ), esc_html__( 'Ignore', 'affiliate-link-manager' ) );
 		}
 
+		// esc_attr() on the JSON string is load-bearing, not decorative:
+		// wp_json_encode() delimits with double quotes, and this whole
+		// thing sits inside an onclick="..." attribute that also uses
+		// double quotes. Without escaping, the attribute value ends at
+		// the JSON string's own opening quote, and everything after
+		// that -- including "Manager's" own apostrophe once the parser
+		// is already out of sync -- gets parsed as garbage bare
+		// attributes, corrupting this element and, in the browser's
+		// error-recovery parsing, cascading into duplicated markup
+		// later in the row (confirmed live: two toggle-row buttons
+		// instead of one, downstream of this exact corruption).
 		$actions['delete'] = sprintf(
 			'<a href="%s" class="submitdelete" onclick="return confirm(%s);">%s</a>',
 			esc_url( $this->row_action_url( 'delete', $item['id'] ) ),
-			wp_json_encode( __( 'Delete this link? This only removes it from Affiliate Link Manager\'s records -- it does not change the post.', 'affiliate-link-manager' ) ),
+			esc_attr( wp_json_encode( __( 'Delete this link? This only removes it from Affiliate Link Manager\'s records -- it does not change the post.', 'affiliate-link-manager' ) ) ),
 			esc_html__( 'Delete', 'affiliate-link-manager' )
 		);
 
