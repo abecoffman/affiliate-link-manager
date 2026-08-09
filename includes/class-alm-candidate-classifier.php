@@ -35,18 +35,26 @@ class ALM_Candidate_Classifier {
 	 * @var string[]
 	 */
 	const DEFAULT_NOISE_DOMAINS = array(
-		// Social / community.
+		// Social / community, including short-link domain variants
+		// (instagr.am, t.co, pin.it, fb.me are the *same* platforms as
+		// instagram.com/twitter.com/pinterest.com/facebook.com under a
+		// different host, not separate services).
 		'instagram.com',
+		'instagr.am',
 		'facebook.com',
+		'fb.me',
 		'twitter.com',
 		'x.com',
+		't.co',
 		'pinterest.com',
+		'pin.it',
 		'youtube.com',
 		'youtu.be',
 		'tiktok.com',
 		'linkedin.com',
 		'snapchat.com',
 		'threads.net',
+		'vimeo.com',
 		// Photo / portfolio sharing -- credit links, not product pages.
 		'flickr.com',
 		'behance.net',
@@ -55,11 +63,61 @@ class ALM_Candidate_Classifier {
 		// Reference.
 		'wikipedia.org',
 		'wiktionary.org',
-		// WordPress / Google infrastructure.
+		'imdb.com',
+		// Blog-hosting platforms -- a personal blogspot/tumblr is
+		// content, not a storefront, regardless of which specific blog
+		// it is. Matched by suffix like everything else here, so this
+		// covers every subdomain (anyname.blogspot.com, etc.) at once.
+		'blogspot.com',
+		'tumblr.com',
+		// Major editorial / magazine / media publishers -- these come
+		// up constantly as image-source or "as seen in" credit links on
+		// a lifestyle/DIY/fashion blog, never as a product page. Found
+		// by looking at this site's own actual candidate list (not
+		// guessed): honestlywtf alone had 600+ links to sites in this
+		// category showing up as false-positive candidates before this
+		// list existed. Still domain identity, not content -- a
+		// publisher's own online shop (e.g. a magazine-branded product
+		// line) would incorrectly get excluded too; none of these are
+		// known to run one.
+		'vogue.com',
+		'style.com',
+		'elle.com',
+		'refinery29.com',
+		'architecturaldigest.com',
+		'elledecor.com',
+		'apartmenttherapy.com',
+		'domino.com',
+		'countryliving.com',
+		'housebeautiful.com',
+		'nytimes.com',
+		'latimesmagazine.com',
+		'mydomaine.com',
+		'nymag.com',
+		'designboom.com',
+		'mymodernmet.com',
+		'thisiscolossal.com',
+		'boredpanda.com',
+		'desiretoinspire.net',
+		'thejealouscurator.com',
+		'sfgirlbybay.com',
+		'thedesignfiles.net',
+		'stylebistro.com',
+		'fashionising.com',
+		'domainehome.com',
+		'missmoss.co.za',
+		'fashiongonerogue.com',
+		'lonny.com',
+		'designsponge.com',
+		// Never a product page regardless of niche.
+		'uber.com',
+		// WordPress / Google infrastructure, and FeedBlitz -- a common
+		// 2010s-era blog subscription/RSS widget, never a shop.
 		'wordpress.org',
 		'wordpress.com',
 		'gravatar.com',
 		'feedburner.com',
+		'fmpub.net',
 		'google.com',
 	);
 

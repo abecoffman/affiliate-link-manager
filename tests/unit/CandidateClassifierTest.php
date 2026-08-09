@@ -39,6 +39,20 @@ class CandidateClassifierTest extends TestCase {
 			'instagram, www subdomain'          => array( 'https://www.instagram.com/p/abc123', false ),
 			'pinterest'                         => array( 'https://www.pinterest.com/pin/123', false ),
 			'wikipedia'                         => array( 'https://en.wikipedia.org/wiki/Macrame', false ),
+			'a major magazine/media publisher'  => array( 'https://www.vogue.com/article/some-feature', false ),
+			'another major publisher'           => array( 'https://www.elle.com/fashion/story', false ),
+			'a personal blogspot blog'          => array( 'https://somecreativeblog.blogspot.com/2019/some-post.html', false ),
+			'a tumblr blog'                     => array( 'https://someblog.tumblr.com/post/123', false ),
+			'a video platform'                  => array( 'https://vimeo.com/12345678', false ),
+			'imdb'                              => array( 'https://www.imdb.com/title/tt0111161/', false ),
+			'ride-sharing, never a shop'         => array( 'https://www.uber.com/global/en/price-estimate/', false ),
+			'instagram short domain'            => array( 'https://instagr.am/p/abc123', false ),
+			'twitter short domain'              => array( 'https://t.co/abc123', false ),
+			// A real affiliate-network redirect domain (Commission
+			// Junction) must NOT be excluded -- it's likely already a
+			// functioning affiliate link this plugin just doesn't have a
+			// dedicated provider for yet, the opposite of noise.
+			'a real affiliate-network redirect' => array( 'https://www.anrdoezrs.net/click-1234-5678', true ),
 			'a direct jpg link'                 => array( 'https://cdn.example.com/photos/look.jpg', false ),
 			'a direct png link, query string'   => array( 'https://cdn.example.com/photos/look.png?w=800', false ),
 			'a relative path'                   => array( '/2024/01/some-post/', false ),
@@ -53,21 +67,24 @@ class CandidateClassifierTest extends TestCase {
 	}
 
 	public function test_a_domain_added_via_settings_option_is_excluded() {
-		Functions\when( 'get_option' )->justReturn( "honestlyyum.com\nvogue.com" );
+		// honestlyyum.com (a real sister site) is exactly the kind of
+		// thing that can never be a universal default -- only the site
+		// owner would know it's noise for *their* site specifically.
+		Functions\when( 'get_option' )->justReturn( "honestlyyum.com\nsome-niche-blog.example" );
 
 		$classifier = new \ALM_Candidate_Classifier();
 		$this->assertFalse( $classifier->is_candidate( 'https://www.honestlyyum.com/recipe' ) );
-		$this->assertFalse( $classifier->is_candidate( 'https://www.vogue.com/article' ) );
+		$this->assertFalse( $classifier->is_candidate( 'https://www.some-niche-blog.example/article' ) );
 		// A real retailer is unaffected by the custom list.
 		$this->assertTrue( $classifier->is_candidate( 'https://www.zara.com/product' ) );
 	}
 
 	public function test_comma_separated_custom_domains_are_also_supported() {
-		Functions\when( 'get_option' )->justReturn( 'honestlyyum.com, vogue.com' );
+		Functions\when( 'get_option' )->justReturn( 'honestlyyum.com, some-niche-blog.example' );
 
 		$classifier = new \ALM_Candidate_Classifier();
 		$this->assertFalse( $classifier->is_candidate( 'https://honestlyyum.com/recipe' ) );
-		$this->assertFalse( $classifier->is_candidate( 'https://vogue.com/article' ) );
+		$this->assertFalse( $classifier->is_candidate( 'https://some-niche-blog.example/article' ) );
 	}
 
 	public function test_a_domain_added_via_the_filter_is_excluded() {
