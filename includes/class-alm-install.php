@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ALM_Install {
 
 	const DB_VERSION_OPTION = 'alm_db_version';
-	const DB_VERSION        = '1.1.0';
+	const DB_VERSION        = '1.2.0';
 
 	/**
 	 * Real, documented status values -- the column itself is a plain
@@ -48,6 +48,17 @@ class ALM_Install {
 			self::create_table();
 			update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 		}
+
+		// register_activation_hook() only ever fires on an actual
+		// activate-toggle -- an already-active install picking up this
+		// capability for the first time via a plain file update (no
+		// deactivate/reactivate) would otherwise never get the cron
+		// event scheduled at all. Checked on every boot instead, same
+		// as the schema check above; wp_next_scheduled() makes this a
+		// cheap no-op once it's actually set.
+		if ( ! wp_next_scheduled( 'alm_domain_recheck_cron' ) ) {
+			wp_schedule_event( time(), 'daily', 'alm_domain_recheck_cron' );
+		}
 	}
 
 	/**
@@ -59,6 +70,19 @@ class ALM_Install {
 	}
 
 	/**
+	 * Per-domain cache of ALM_Domain_Checker's real-content verdict --
+	 * one row per unique domain, not per link, so a domain with 200
+	 * links only ever costs one outbound HTTP request. See
+	 * ALM_Domain_Checker/ALM_Domain_Scanner.
+	 *
+	 * @return string
+	 */
+	public static function domains_table_name() {
+		global $wpdb;
+		return $wpdb->prefix . 'alm_domains';
+	}
+
+	/**
 	 * @return void
 	 */
 	private static function create_table() {
@@ -67,6 +91,7 @@ class ALM_Install {
 		require_once ABSPATH . 'wp-admin/includes/upgrade.php';
 
 		$table_name      = self::table_name();
+		$domains_table   = self::domains_table_name();
 		$charset_collate = $wpdb->get_charset_collate();
 
 		// dbDelta() is picky about exact formatting (two spaces before
@@ -93,6 +118,28 @@ class ALM_Install {
 		) {$charset_collate};";
 
 		dbDelta( $sql );
+
+		// is_shop: NULL = not yet checked, or checked but the fetch
+		// failed/was inconclusive (never reclassifies links either way);
+		// 1/0 = a real, checked verdict. checked_at NULL means "known
+		// about (a link on this domain was seen) but never actually
+		// fetched yet" -- the domain-scanner's "needs check" query reads
+		// straight off of that.
+		$domains_sql = "CREATE TABLE {$domains_table} (
+			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+			domain VARCHAR(191) NOT NULL,
+			is_shop TINYINT(1) NULL DEFAULT NULL,
+			signals TEXT NULL,
+			http_status SMALLINT UNSIGNED NULL DEFAULT NULL,
+			sample_url TEXT NULL,
+			checked_at DATETIME NULL DEFAULT NULL,
+			created_at DATETIME NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY domain (domain),
+			KEY checked_at (checked_at)
+		) {$charset_collate};";
+
+		dbDelta( $domains_sql );
 	}
 
 	/**
@@ -110,6 +157,10 @@ class ALM_Install {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; can't be a placeholder.
 		$wpdb->query( "DROP TABLE IF EXISTS {$table_name}" );
 
+		$domains_table = self::domains_table_name();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; can't be a placeholder.
+		$wpdb->query( "DROP TABLE IF EXISTS {$domains_table}" );
+
 		delete_option( self::DB_VERSION_OPTION );
 		delete_option( 'alm_last_scan_time' );
 		delete_option( 'alm_scan_started_at' );
@@ -118,5 +169,7 @@ class ALM_Install {
 		delete_option( 'alm_candidate_excluded_domains' );
 		delete_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID );
 		delete_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID );
+
+		wp_clear_scheduled_hook( 'alm_domain_recheck_cron' );
 	}
 }

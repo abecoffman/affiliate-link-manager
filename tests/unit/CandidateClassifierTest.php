@@ -100,4 +100,36 @@ class CandidateClassifierTest extends TestCase {
 		$classifier = new \ALM_Candidate_Classifier();
 		$this->assertFalse( $classifier->is_candidate( 'https://www.example-magazine.com/feature' ) );
 	}
+
+	/**
+	 * A real, content-checked domain verdict (from ALM_Domain_Checker,
+	 * via ALM_Domain_Scanner's cache) takes precedence over the static
+	 * denylist guess -- actual page content beats guessing from the
+	 * domain name, in both directions.
+	 */
+	public function test_a_real_domain_verdict_overrides_the_static_denylist_guess() {
+		$classifier = new \ALM_Candidate_Classifier();
+
+		// A domain not on any denylist would normally default to
+		// "candidate" -- a confirmed-false content verdict overrides that.
+		$this->assertFalse( $classifier->is_candidate( 'https://www.some-random-blog.example/post', false ) );
+
+		// vogue.com is in the built-in denylist -- a confirmed-true
+		// content verdict (e.g. Vogue launched a real shop page) overrides
+		// that guess the other way.
+		$this->assertTrue( $classifier->is_candidate( 'https://shop.vogue.com/product', true ) );
+	}
+
+	/**
+	 * The domain verdict answers "is this domain a shop", not "is this
+	 * exact URL a product" -- the structural checks (internal links,
+	 * direct file links) still have to apply first regardless of what
+	 * the domain itself turned out to be.
+	 */
+	public function test_domain_verdict_does_not_override_structural_checks() {
+		$classifier = new \ALM_Candidate_Classifier();
+
+		$this->assertFalse( $classifier->is_candidate( 'https://shop.example.com/images/banner.jpg', true ), 'An image asset is never a product page, even on a confirmed shop domain.' );
+		$this->assertFalse( $classifier->is_candidate( 'https://honestlywtf.com/category/diy', true ), 'An internal link is never a candidate, even with a (nonsensical) true verdict.' );
+	}
 }

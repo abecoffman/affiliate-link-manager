@@ -122,10 +122,21 @@ class ALM_Candidate_Classifier {
 	);
 
 	/**
-	 * @param string $url
+	 * @param string    $url
+	 * @param bool|null $domain_verdict A real, content-checked verdict
+	 *                  for this URL's domain from ALM_Domain_Checker
+	 *                  (via ALM_Domain_Scanner's cache), if one exists.
+	 *                  Takes precedence over the static domain-name
+	 *                  denylist below when given -- actual page content
+	 *                  is strictly more reliable than a guess from the
+	 *                  domain name. Structural checks (scheme, internal
+	 *                  link, direct file link) still apply first
+	 *                  regardless: a real shop's own image asset is
+	 *                  never a product page just because the domain is
+	 *                  confirmed to be a shop.
 	 * @return bool
 	 */
-	public function is_candidate( $url ) {
+	public function is_candidate( $url, $domain_verdict = null ) {
 		$scheme = wp_parse_url( $url, PHP_URL_SCHEME );
 		if ( ! in_array( $scheme, array( 'http', 'https' ), true ) ) {
 			// Relative paths, #anchors, mailto:, tel:, javascript: --
@@ -152,6 +163,10 @@ class ALM_Candidate_Classifier {
 			// common pattern in post content) is never itself a
 			// product page.
 			return false;
+		}
+
+		if ( null !== $domain_verdict ) {
+			return $domain_verdict;
 		}
 
 		foreach ( $this->get_noise_domains() as $noise_domain ) {

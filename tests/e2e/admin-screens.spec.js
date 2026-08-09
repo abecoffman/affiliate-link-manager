@@ -99,6 +99,23 @@ test.describe('Affiliate Links admin screens', () => {
 		await expect(page).toHaveURL(/status=convertible/);
 	});
 
+	test('Check Domains completes and does not reclassify an unreachable domain', async ({ page }) => {
+		await page.goto('/wp-admin/admin.php?page=affiliate-links');
+
+		const domainCard = page.locator('.alm-card', { hasText: 'Domain content check' });
+		await expect(domainCard.getByRole('button', { name: /Check Domains/ })).toBeVisible();
+
+		await domainCard.getByRole('button', { name: /Check Domains/ }).click();
+		// The fixture link's domain (example-retailer.example.com) doesn't
+		// resolve -- a real, if boring, case worth covering: the fetch
+		// fails, the domain is marked checked, and the link's status must
+		// be untouched (still a Candidate), not silently swept to noise.
+		await expect(page.getByText(/\d+ domains? checked so far/)).toBeVisible({ timeout: 30000 });
+
+		const needsAttention = page.locator('.alm-card', { hasText: 'Needs attention' });
+		await expect(needsAttention.getByText('Candidate')).toBeVisible();
+	});
+
 	for (const screen of screens) {
 		test(`${screen.name} renders with no console errors and no horizontal overflow`, async ({ page }) => {
 			const consoleErrors = [];

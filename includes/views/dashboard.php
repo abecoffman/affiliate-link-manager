@@ -10,6 +10,7 @@
  * @var array<string,array{label:string,count:int}> $stats
  * @var array<string,int>                            $needs_attention
  * @var array{new_links?:int,now_stale?:int}          $scan_delta
+ * @var array{checked:int,pending:int,confirmed_shops:int,confirmed_noise:int} $domain_check
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -130,4 +131,46 @@ $total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 			</table>
 		</div>
 	<?php endif; ?>
+
+	<div class="alm-card">
+		<div class="alm-card-header">
+			<h2><?php esc_html_e( 'Domain content check', 'affiliate-link-manager' ); ?></h2>
+			<p class="alm-card-lede"><?php esc_html_e( 'Fetches one real page per candidate domain and looks for actual e-commerce signals (product schema, shop-platform fingerprints) instead of guessing from the domain name. Confirmed non-shops move back to Unclassified automatically -- this is what keeps the Candidates list accurate without anyone maintaining a list of known sites by hand.', 'affiliate-link-manager' ); ?></p>
+		</div>
+
+		<p class="alm-total-count">
+			<?php
+			/* translators: 1: number of domains checked so far, 2: confirmed real shops, 3: confirmed not shops */
+			$domain_count_format = _n(
+				'%1$d domain checked so far (%2$d confirmed shops, %3$d confirmed not).',
+				'%1$d domains checked so far (%2$d confirmed shops, %3$d confirmed not).',
+				$domain_check['checked'],
+				'affiliate-link-manager'
+			);
+			printf(
+				esc_html( $domain_count_format ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_html() applied above; the sniff can't see through the intermediate variable.
+				(int) $domain_check['checked'],
+				(int) $domain_check['confirmed_shops'],
+				(int) $domain_check['confirmed_noise']
+			);
+			?>
+		</p>
+
+		<?php if ( $domain_check['pending'] > 0 ) : ?>
+			<p>
+				<button type="button" class="button button-primary" id="alm-check-domains">
+					<?php
+					printf(
+						/* translators: %d: number of domains waiting to be checked */
+						esc_html__( 'Check Domains (%d pending)', 'affiliate-link-manager' ),
+						(int) $domain_check['pending']
+					);
+					?>
+				</button>
+				<span id="alm-domain-check-progress" class="alm-scan-progress" hidden></span>
+			</p>
+		<?php else : ?>
+			<p class="alm-card-lede"><?php esc_html_e( 'All candidate domains are checked and up to date.', 'affiliate-link-manager' ); ?></p>
+		<?php endif; ?>
+	</div>
 </div>
