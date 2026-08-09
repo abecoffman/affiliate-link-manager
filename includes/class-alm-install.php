@@ -44,7 +44,19 @@ class ALM_Install {
 	 * table needs creating, or after a future schema-version bump.
 	 */
 	public static function maybe_upgrade() {
-		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION ) {
+		// The version-option check alone isn't quite enough to trust: a
+		// dbDelta() call that silently no-ops on one of the two tables
+		// (seen once in practice, cause never fully pinned down --
+		// dbDelta() failures aren't fatal errors) would still let
+		// update_option() below mark the site as "upgraded" regardless,
+		// permanently hiding a table that never actually got created.
+		// Checking the domains table's real existence directly makes
+		// this self-healing on the next boot instead of silently stuck.
+		global $wpdb;
+		$domains_table  = self::domains_table_name();
+		$domains_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $domains_table ) ) === $domains_table;
+
+		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists ) {
 			self::create_table();
 			update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 		}
