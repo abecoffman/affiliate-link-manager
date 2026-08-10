@@ -5,12 +5,13 @@
  * free, the same way WordPress core's own Posts/Users/Plugins screens
  * work, instead of a hand-rolled <table>.
  *
- * Deliberately only ships Ignore/Delete actions this round -- both are
- * pure metadata operations on this plugin's own table. "Convert to
- * [provider]" is a real content-rewrite (ALM_Provider::wrap_url() +
- * ALM_Content_Adapter::replace_link(), both already implemented and
- * unit-tested) and belongs to the next phase alongside the rest of the
- * write-back UI, not bundled in here.
+ * Ignore/Delete are pure metadata operations on this plugin's own
+ * table. Convert (both the row-level "Edit" action, via
+ * ALM_Admin::handle_edit_link()'s AJAX endpoint, and the "Convert to
+ * [provider]" bulk action below) is a real content-rewrite --
+ * ALM_Provider::wrap_url() + ALM_Content_Adapter::replace_link() --
+ * funneled through the shared ALM_Link_Converter so both entry points
+ * behave identically.
  *
  * @package ALM
  */
@@ -25,14 +26,20 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
 
 class ALM_Links_List_Table extends WP_List_Table {
 
-	const BULK_NONCE_ACTION = 'alm-bulk-links';
+	const BULK_NONCE_ACTION     = 'alm-bulk-links';
+	const CONVERT_ACTION_PREFIX = 'convert_';
 
 	/**
 	 * @var ALM_Provider_Registry
 	 */
 	private $providers;
 
-	public function __construct( ALM_Provider_Registry $providers ) {
+	/**
+	 * @var ALM_Link_Converter
+	 */
+	private $converter;
+
+	public function __construct( ALM_Provider_Registry $providers, ALM_Link_Converter $converter ) {
 		parent::__construct(
 			array(
 				'singular' => 'alm_link',
@@ -41,6 +48,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 			)
 		);
 		$this->providers = $providers;
+		$this->converter = $converter;
 	}
 
 	/**
@@ -99,13 +107,33 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
+	 * One "Convert to [Provider]" entry per registered, configured,
+	 * can_wrap()-capable provider (today: just ShopMy, once an affiliate
+	 * ID is set) -- same gate the row-level Edit modal uses, so the two
+	 * entry points never offer a provider one can do that the other
+	 * can't. Providers that can only reclassify (RewardStyle, Generic)
+	 * don't get a bulk entry -- that's a per-row decision made in the
+	 * Edit modal, not something to fire at scale from a checkbox list.
+	 *
 	 * @return array<string,string>
 	 */
 	protected function get_bulk_actions() {
-		return array(
-			'ignore' => __( 'Ignore', 'affiliate-link-manager' ),
-			'delete' => __( 'Delete', 'affiliate-link-manager' ),
-		);
+		$actions = array();
+
+		foreach ( $this->providers->get_providers() as $provider ) {
+			if ( $provider->can_wrap() ) {
+				$actions[ self::CONVERT_ACTION_PREFIX . $provider->get_id() ] = sprintf(
+					/* translators: %s: provider label, e.g. "ShopMy" */
+					__( 'Convert to %s', 'affiliate-link-manager' ),
+					$provider->get_label()
+				);
+			}
+		}
+
+		$actions['ignore'] = __( 'Ignore', 'affiliate-link-manager' );
+		$actions['delete'] = __( 'Delete', 'affiliate-link-manager' );
+
+		return $actions;
 	}
 
 	/**
@@ -378,6 +406,8 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$table        = ALM_Install::table_name();
 		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
 
+		$notice_args = array();
+
 		if ( 'ignore' === $action ) {
 			$sql    = "UPDATE {$table} SET status = %s, dismissed_at = %s WHERE id IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed run of %d tokens, not user input; real values bound via prepare() below.
 			$params = array_merge( array( ALM_Install::STATUS_IGNORED, current_time( 'mysql' ) ), $ids );
@@ -385,6 +415,9 @@ class ALM_Links_List_Table extends WP_List_Table {
 		} elseif ( 'delete' === $action ) {
 			$sql = "DELETE FROM {$table} WHERE id IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
 			$wpdb->query( $wpdb->prepare( $sql, $ids ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		} elseif ( 0 === strpos( $action, self::CONVERT_ACTION_PREFIX ) ) {
+			$provider_id = substr( $action, strlen( self::CONVERT_ACTION_PREFIX ) );
+			$notice_args = $this->bulk_convert( $ids, $provider_id );
 		} else {
 			return;
 		}
@@ -395,8 +428,50 @@ class ALM_Links_List_Table extends WP_List_Table {
 		// action=/alm_link[]= query args. Harmless here since both
 		// actions are idempotent, but not good practice to leave in.
 		$clean_url = remove_query_arg( array( 'action', 'action2', 'alm_link', '_wpnonce' ) );
+		if ( $notice_args ) {
+			$clean_url = add_query_arg( $notice_args, $clean_url );
+		}
 		wp_safe_redirect( $clean_url );
 		exit;
+	}
+
+	/**
+	 * Converts each selected row to $provider_id via the shared
+	 * ALM_Link_Converter, one row at a time -- not a single batched
+	 * query, since each conversion is a real write to the post's own
+	 * content (ALM_Content_Adapter::replace_link()), not just a status
+	 * flip. A row whose content changed underneath since the last scan
+	 * comes back as a WP_Error and is left untouched rather than
+	 * failing the whole batch -- counted as skipped, surfaced in the
+	 * redirect notice rather than silently dropped.
+	 *
+	 * @param int[]  $ids
+	 * @param string $provider_id
+	 * @return array<string,int> Query args for the post-redirect notice.
+	 */
+	private function bulk_convert( array $ids, $provider_id ) {
+		global $wpdb;
+		$table        = ALM_Install::table_name();
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+		$sql   = "SELECT * FROM {$table} WHERE id IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed run of %d tokens, not user input; real values bound via prepare() below.
+		$items = $wpdb->get_results( $wpdb->prepare( $sql, $ids ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+
+		$converted = 0;
+		$skipped   = 0;
+		foreach ( $items as $item ) {
+			$result = $this->converter->convert( $item, $provider_id );
+			if ( is_wp_error( $result ) ) {
+				++$skipped;
+			} else {
+				++$converted;
+			}
+		}
+
+		return array(
+			'alm_converted' => $converted,
+			'alm_skipped'   => $skipped,
+		);
 	}
 
 	/**
@@ -460,6 +535,21 @@ class ALM_Links_List_Table extends WP_List_Table {
 		if ( $view_link ) {
 			$actions['view'] = sprintf( '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>', esc_url( $view_link ), esc_html__( 'View', 'affiliate-link-manager' ) );
 		}
+
+		// Opens the JS-driven Edit modal (assets/admin.js) -- data
+		// attributes carry everything the modal needs to render without
+		// a round-trip, since this row already has it all server-side.
+		// href="#" with an explicit click handler, not a real link: this
+		// never navigates, same as WP core's own inline-edit row actions.
+		$actions['edit_link'] = sprintf(
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-url="%3$s" data-anchor="%4$s" data-provider="%5$s">%6$s</a>',
+			(int) $item['id'],
+			esc_attr( get_the_title( $item['post_id'] ) ),
+			esc_attr( $item['url'] ),
+			esc_attr( $item['anchor_text'] ),
+			esc_attr( $item['provider'] ),
+			esc_html__( 'Edit', 'affiliate-link-manager' )
+		);
 
 		if ( ALM_Install::STATUS_IGNORED !== $item['status'] ) {
 			$actions['ignore'] = sprintf( '<a href="%s">%s</a>', esc_url( $this->row_action_url( 'ignore', $item['id'] ) ), esc_html__( 'Ignore', 'affiliate-link-manager' ) );

@@ -74,4 +74,18 @@ class ALM_Adapter_Registry {
 
 		return $this->fallback;
 	}
+
+	/**
+	 * @param string $id
+	 * @return ALM_Content_Adapter|null
+	 */
+	public function get_adapter( $id ) {
+		foreach ( $this->get_adapters() as $adapter ) {
+			if ( $adapter->get_id() === $id ) {
+				return $adapter;
+			}
+		}
+
+		return null;
+	}
 }

@@ -68,6 +68,23 @@ test.describe('Affiliate Links admin screens', () => {
 			'--post_title=ALM E2E noise fixture post',
 			'--post_content=<p>Follow along on <a href="https://www.instagram.com/example">Instagram</a>.</p>',
 		]);
+
+		// Its own dedicated fixture, separate from the long-URL one above --
+		// the single-row Edit modal test converts that one, so the bulk
+		// convert test needs a candidate of its own rather than racing it.
+		wp([
+			'post', 'create',
+			'--post_status=publish',
+			'--post_title=ALM E2E bulk-convert fixture post',
+			'--post_content=<p>Shop the <a href="https://www.a-bulk-convert-retailer.example/product">dress</a>.</p>',
+		]);
+
+		// ShopMy's wrap_url() is a pure string transform keyed off this
+		// affiliate id (see ALM_Provider_ShopMy) -- Convert only appears
+		// as a row/bulk action once a provider is actually configured,
+		// same gate ALM_Admin::get_provider_capabilities() exposes to the
+		// Edit modal's JS.
+		wp(['option', 'update', 'alm_shopmy_affiliate_id', 'sDXyBS']);
 	});
 
 	const screens = [
@@ -130,6 +147,65 @@ test.describe('Affiliate Links admin screens', () => {
 
 		const needsAttention = page.locator('.alm-card', { hasText: 'Needs attention' });
 		await expect(needsAttention.getByText('Candidate')).toBeVisible();
+	});
+
+	/**
+	 * The single-row Edit modal, end to end: opens pre-filled from the
+	 * row's own data attributes, selecting a can_wrap()-capable
+	 * provider (ShopMy) switches the save button to "Convert & Save",
+	 * and saving actually rewrites the live post content -- not just
+	 * this plugin's own tracking table. Exercises the real
+	 * ALM_Admin::handle_edit_link() AJAX endpoint and
+	 * ALM_Link_Converter, not a mock.
+	 */
+	test('Edit modal converts a Candidate link to a real ShopMy link', async ({ page }) => {
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
+
+		const row = page.getByRole('row', { name: /a very long product name/ });
+		await expect(row).toBeVisible();
+		await row.hover();
+		await row.getByRole('link', { name: 'Edit', exact: true }).click();
+
+		const modal = page.locator('#alm-edit-link-modal');
+		await expect(modal).toBeVisible();
+
+		await modal.locator('#alm-edit-link-provider').selectOption('shopmy');
+		await expect(modal.locator('#alm-edit-link-save')).toHaveText('Convert & Save');
+
+		await modal.locator('#alm-edit-link-save').click();
+
+		// Save reloads the page on success (same convention as Run
+		// Scan/Check Domains) -- the row's own badges are the real
+		// assertion, not just that the modal closed.
+		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
+		const updatedRow = page.getByRole('row', { name: /a very long product name/ });
+		await expect(updatedRow.locator('.alm-badge-shopmy')).toBeVisible();
+		await expect(updatedRow.locator('.alm-badge-status-active')).toBeVisible();
+	});
+
+	/**
+	 * The bulk path: "Convert to ShopMy" only appears because ShopMy
+	 * was configured in beforeAll (can_wrap() gates it, same as the
+	 * row-level Edit modal) -- proves the bulk action wiring in
+	 * ALM_Links_List_Table::process_bulk_action() end to end, including
+	 * the JS confirm() this plugin's own admin.js adds before
+	 * submitting a convert_* bulk action.
+	 */
+	test('Bulk "Convert to ShopMy" converts selected Candidate links', async ({ page }) => {
+		page.on('dialog', (dialog) => dialog.accept());
+
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
+
+		const row = page.getByRole('row', { name: /dress/ });
+		await expect(row).toBeVisible();
+		await row.getByRole('checkbox').check();
+
+		await page.locator('#bulk-action-selector-top').selectOption('convert_shopmy');
+		await page.locator('#doaction').click();
+
+		await expect(page.getByText(/Converted \d+ link/)).toBeVisible();
+		const updatedRow = page.getByRole('row', { name: /dress/ });
+		await expect(updatedRow.locator('.alm-badge-shopmy')).toBeVisible();
 	});
 
 	for (const screen of screens) {

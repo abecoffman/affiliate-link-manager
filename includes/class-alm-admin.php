@@ -15,6 +15,7 @@ class ALM_Admin {
 
 	const AJAX_SCAN_ACTION         = 'alm_scan_batch';
 	const AJAX_DOMAIN_CHECK_ACTION = 'alm_check_domains_batch';
+	const AJAX_EDIT_LINK_ACTION    = 'alm_edit_link';
 	const NONCE_ACTION             = 'alm_admin';
 	const SETTINGS_NONCE           = 'alm_settings';
 	const PROVIDERS_NONCE          = 'alm_providers';
@@ -42,11 +43,17 @@ class ALM_Admin {
 	 */
 	private $domain_scanner;
 
-	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner ) {
+	/**
+	 * @var ALM_Link_Converter
+	 */
+	private $converter;
+
+	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter ) {
 		$this->scanner        = $scanner;
 		$this->providers      = $providers;
 		$this->adapters       = $adapters;
 		$this->domain_scanner = $domain_scanner;
+		$this->converter      = $converter;
 	}
 
 	public function init() {
@@ -54,6 +61,7 @@ class ALM_Admin {
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 		add_action( 'wp_ajax_' . self::AJAX_SCAN_ACTION, array( $this, 'handle_scan_batch' ) );
 		add_action( 'wp_ajax_' . self::AJAX_DOMAIN_CHECK_ACTION, array( $this, 'handle_domain_check_batch' ) );
+		add_action( 'wp_ajax_' . self::AJAX_EDIT_LINK_ACTION, array( $this, 'handle_edit_link' ) );
 		add_action( 'admin_init', array( $this, 'handle_settings_forms' ) );
 	}
 
@@ -141,20 +149,52 @@ class ALM_Admin {
 				'ajaxUrl'           => admin_url( 'admin-ajax.php' ),
 				'action'            => self::AJAX_SCAN_ACTION,
 				'domainCheckAction' => self::AJAX_DOMAIN_CHECK_ACTION,
+				'editLinkAction'    => self::AJAX_EDIT_LINK_ACTION,
 				'nonce'             => wp_create_nonce( self::NONCE_ACTION ),
 				'total'             => $this->scanner->count_scannable_posts(),
 				'domainsTotal'      => $this->domain_scanner->count_domains_needing_check(),
+				// Drives the Edit-link modal's provider <select> and its
+				// Convert-vs-Reclassify save-button label -- can_wrap()
+				// already folds in is_configured() for ShopMy, so an
+				// unconfigured provider correctly shows as reclassify-only
+				// here too, same gate the bulk action and row action use.
+				'providers'         => $this->get_provider_capabilities(),
 				'strings'           => array(
-					'scanning'        => __( 'Scanning…', 'affiliate-link-manager' ),
-					'scanDone'        => __( 'Scan complete — reloading…', 'affiliate-link-manager' ),
-					'scanStart'       => __( 'Run Scan', 'affiliate-link-manager' ),
-					'error'           => __( 'Something went wrong. Please try again.', 'affiliate-link-manager' ),
-					'checkingDomains' => __( 'Checking domains…', 'affiliate-link-manager' ),
-					'domainCheckDone' => __( 'Domain check complete — reloading…', 'affiliate-link-manager' ),
-					'checkDomains'    => __( 'Check Domains', 'affiliate-link-manager' ),
+					'scanning'         => __( 'Scanning…', 'affiliate-link-manager' ),
+					'scanDone'         => __( 'Scan complete — reloading…', 'affiliate-link-manager' ),
+					'scanStart'        => __( 'Run Scan', 'affiliate-link-manager' ),
+					'error'            => __( 'Something went wrong. Please try again.', 'affiliate-link-manager' ),
+					'checkingDomains'  => __( 'Checking domains…', 'affiliate-link-manager' ),
+					'domainCheckDone'  => __( 'Domain check complete — reloading…', 'affiliate-link-manager' ),
+					'checkDomains'     => __( 'Check Domains', 'affiliate-link-manager' ),
+					'editModalTitle'   => __( 'Edit link', 'affiliate-link-manager' ),
+					'convertAndSave'   => __( 'Convert & Save', 'affiliate-link-manager' ),
+					'reclassifyOnly'   => __( 'Reclassify Only', 'affiliate-link-manager' ),
+					'saving'           => __( 'Saving…', 'affiliate-link-manager' ),
+					'cancel'           => __( 'Cancel', 'affiliate-link-manager' ),
+					'convertHelp'      => __( 'This will generate a new tracked link for this provider and replace the current URL in the post.', 'affiliate-link-manager' ),
+					'reclassifyHelp'   => __( "This provider can't generate tracked links automatically -- this just relabels the record, the post itself won't change.", 'affiliate-link-manager' ),
+					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
+					'forceConvertWarn' => __( 'This link is already tracked under %s, which may already be earning commission. Converting will replace it -- are you sure?', 'affiliate-link-manager' ),
+					/* translators: %s: provider label, e.g. "ShopMy" */
+					'bulkConvertWarn'  => __( 'Convert all selected links to %s? This replaces the tracked link for any that already have one under a different network.', 'affiliate-link-manager' ),
 				),
 			)
 		);
+	}
+
+	/**
+	 * @return array<string,array{label:string,canWrap:bool}>
+	 */
+	private function get_provider_capabilities() {
+		$capabilities = array();
+		foreach ( $this->providers->get_providers() as $provider ) {
+			$capabilities[ $provider->get_id() ] = array(
+				'label'   => $provider->get_label(),
+				'canWrap' => $provider->can_wrap(),
+			);
+		}
+		return $capabilities;
 	}
 
 	/**
@@ -164,7 +204,7 @@ class ALM_Admin {
 	 * @return void
 	 */
 	public function handle_links_bulk_action() {
-		$list_table = new ALM_Links_List_Table( $this->providers );
+		$list_table = new ALM_Links_List_Table( $this->providers, $this->converter );
 		$list_table->process_bulk_action();
 	}
 
@@ -200,6 +240,47 @@ class ALM_Admin {
 		$result = $this->domain_scanner->check_batch( 5 );
 
 		wp_send_json_success( $result );
+	}
+
+	/**
+	 * Single-row save for the Links screen's Edit modal. Bulk conversion
+	 * is a separate, non-AJAX path (ALM_Links_List_Table::process_bulk_action(),
+	 * dispatched from handle_links_bulk_action() above) since it's just
+	 * WP_List_Table's normal bulk-action form submit, not a JS-driven
+	 * flow -- both funnel through the same ALM_Link_Converter either way.
+	 *
+	 * @return void
+	 */
+	public function handle_edit_link() {
+		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'affiliate-link-manager' ) ), 403 );
+		}
+
+		$id          = isset( $_POST['id'] ) ? absint( wp_unslash( $_POST['id'] ) ) : 0;
+		$provider_id = isset( $_POST['provider'] ) ? sanitize_key( wp_unslash( $_POST['provider'] ) ) : '';
+
+		if ( ! $id || '' === $provider_id ) {
+			wp_send_json_error( array( 'message' => __( 'Missing link or provider.', 'affiliate-link-manager' ) ), 400 );
+		}
+
+		global $wpdb;
+		$table = ALM_Install::table_name();
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() below.
+		$item = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input.
+
+		if ( ! $item ) {
+			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 404 );
+		}
+
+		$result = $this->converter->convert( $item, $provider_id );
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+		}
+
+		wp_send_json_success();
 	}
 
 	public function handle_settings_forms() {
@@ -270,7 +351,7 @@ class ALM_Admin {
 	}
 
 	public function render_links() {
-		$list_table = new ALM_Links_List_Table( $this->providers );
+		$list_table = new ALM_Links_List_Table( $this->providers, $this->converter );
 		$list_table->prepare_items();
 		require ALM_PATH . 'includes/views/links.php';
 	}

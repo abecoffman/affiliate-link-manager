@@ -37,6 +37,45 @@ if ( ! defined( 'ABSPATH' ) ) {
 		</p>
 	<?php endif; ?>
 
+	<?php
+	// Result notice from the "Convert to [Provider]" bulk action --
+	// ALM_Links_List_Table::bulk_convert() redirects here with these two
+	// query args set, same pattern as WP core's own bulk-action notices
+	// (Posts' "N posts updated"). A skip isn't a failure: it means the
+	// row's content changed since the last scan and replace_link()
+	// correctly refused to write over it -- said plainly rather than
+	// silently dropped, per this plugin's existing "leave it alone and
+	// say why" convention (see ALM_Content_Adapter::replace_link()).
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only notice display, the state change already happened and was itself nonce-verified in process_bulk_action().
+	if ( isset( $_GET['alm_converted'] ) ) :
+		$converted = absint( wp_unslash( $_GET['alm_converted'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$skipped   = isset( $_GET['alm_skipped'] ) ? absint( wp_unslash( $_GET['alm_skipped'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		?>
+		<div class="notice notice-<?php echo esc_attr( $skipped ? 'warning' : 'success' ); ?> is-dismissible">
+			<p>
+				<?php if ( $skipped ) : ?>
+					<?php
+					printf(
+						/* translators: 1: number converted, 2: number of selected links, 3: number skipped */
+						esc_html__( 'Converted %1$d of %2$d; %3$d skipped because the post content changed since the last scan — rescan and try again.', 'affiliate-link-manager' ),
+						(int) $converted,
+						(int) ( $converted + $skipped ),
+						(int) $skipped
+					);
+					?>
+				<?php else : ?>
+					<?php
+					printf(
+						/* translators: %d: number of links converted */
+						esc_html( _n( 'Converted %d link.', 'Converted %d links.', $converted, 'affiliate-link-manager' ) ),
+						(int) $converted
+					);
+					?>
+				<?php endif; ?>
+			</p>
+		</div>
+	<?php endif; ?>
+
 	<?php $list_table->views(); ?>
 
 	<form method="get">
@@ -52,4 +91,6 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<?php $list_table->display(); ?>
 		</div>
 	</form>
+
+	<?php require ALM_PATH . 'includes/views/edit-link-modal.php'; ?>
 </div>

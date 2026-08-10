@@ -183,3 +183,71 @@ table.alm_posts .column-breakdown {
 	flex-wrap: wrap;
 	gap: 4px;
 }
+
+/* Edit-link modal (includes/views/edit-link-modal.php, driven by
+   assets/admin.js) -- wp-admin has no native modal component, this is
+   hand-rolled to match its own visual language (the .alm-card surface
+   treatment) rather than inventing a new one. */
+.alm-modal-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.5);
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 10vh 20px 20px;
+	z-index: 100000;
+}
+
+.alm-modal {
+	background: #fff;
+	border-radius: 4px;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+	padding: 24px;
+	width: 100%;
+	max-width: 480px;
+}
+
+.alm-modal h2 {
+	margin-top: 0;
+}
+
+.alm-modal-context {
+	margin: 0 0 16px;
+}
+
+.alm-modal-context dt {
+	font-weight: 600;
+	margin-top: 8px;
+}
+
+.alm-modal-context dd {
+	margin: 0;
+	color: #50575e;
+}
+
+.alm-modal-url {
+	word-break: break-all;
+}
+
+.alm-modal-help {
+	color: #646970;
+	font-size: 13px;
+}
+
+.alm-modal-error {
+	background: #fcf0f1;
+	border-left: 4px solid #d63638;
+	padding: 8px 12px;
+	color: #d63638;
+}
+
+.alm-modal-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 20px;
+}

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.6.1
+ * Version:     1.7.0
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.6.1' );
+define( 'ALM_VERSION', '1.7.0' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -37,6 +37,7 @@ require_once ALM_PATH . 'includes/class-alm-candidate-classifier.php';
 require_once ALM_PATH . 'includes/class-alm-domain-checker.php';
 require_once ALM_PATH . 'includes/class-alm-domain-scanner.php';
 require_once ALM_PATH . 'includes/class-alm-scanner.php';
+require_once ALM_PATH . 'includes/class-alm-link-converter.php';
 require_once ALM_PATH . 'includes/class-alm-admin.php';
 
 register_activation_hook( __FILE__, array( 'ALM_Install', 'activate' ) );
@@ -77,12 +78,13 @@ function alm_init() {
 	$scanner        = new ALM_Scanner( $adapters, $providers, $classifier );
 	$domain_checker = new ALM_Domain_Checker();
 	$domain_scanner = new ALM_Domain_Scanner( $domain_checker, $classifier );
+	$converter      = new ALM_Link_Converter( $providers, $adapters );
 
 	if ( is_admin() ) {
 		require_once ALM_PATH . 'includes/class-alm-links-list-table.php';
 		require_once ALM_PATH . 'includes/class-alm-posts-list-table.php';
 
-		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner );
+		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter );
 		$admin->init();
 	}
 }
