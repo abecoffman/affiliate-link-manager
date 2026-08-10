@@ -79,6 +79,17 @@ test.describe('Affiliate Links admin screens', () => {
 			'--post_content=<p>Shop the <a href="https://www.a-bulk-convert-retailer.example/product">dress</a>.</p>',
 		]);
 
+		// A fourth, dedicated to the manual-paste-a-URL test -- RewardStyle
+		// can't wrap_url() itself (see ALM_Provider_RewardStyle), so
+		// pasting in a link already generated on their own site is the
+		// *only* way to attach one, not just an alternate path.
+		wp([
+			'post', 'create',
+			'--post_status=publish',
+			'--post_title=ALM E2E manual-paste fixture post',
+			'--post_content=<p>Get the <a href="https://www.a-manual-paste-retailer.example/product">jacket</a>.</p>',
+		]);
+
 		// ShopMy's wrap_url() is a pure string transform keyed off this
 		// affiliate id (see ALM_Provider_ShopMy) -- Convert only appears
 		// as a row/bulk action once a provider is actually configured,
@@ -152,7 +163,7 @@ test.describe('Affiliate Links admin screens', () => {
 	/**
 	 * The single-row Edit modal, end to end: opens pre-filled from the
 	 * row's own data attributes, selecting a can_wrap()-capable
-	 * provider (ShopMy) switches the save button to "Convert & Save",
+	 * provider (ShopMy) switches the save button to "Generate & Save",
 	 * and saving actually rewrites the live post content -- not just
 	 * this plugin's own tracking table. Exercises the real
 	 * ALM_Admin::handle_edit_link() AJAX endpoint and
@@ -170,7 +181,7 @@ test.describe('Affiliate Links admin screens', () => {
 		await expect(modal).toBeVisible();
 
 		await modal.locator('#alm-edit-link-provider').selectOption('shopmy');
-		await expect(modal.locator('#alm-edit-link-save')).toHaveText('Convert & Save');
+		await expect(modal.locator('#alm-edit-link-save')).toHaveText('Generate & Save');
 
 		await modal.locator('#alm-edit-link-save').click();
 
@@ -180,6 +191,38 @@ test.describe('Affiliate Links admin screens', () => {
 		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
 		const updatedRow = page.getByRole('row', { name: /a very long product name/ });
 		await expect(updatedRow.locator('.alm-badge-shopmy')).toBeVisible();
+		await expect(updatedRow.locator('.alm-badge-status-active')).toBeVisible();
+	});
+
+	/**
+	 * The other half of the Edit modal: RewardStyle/LTK (this site's
+	 * dominant network, 2,088+ existing links) can't wrap_url() itself
+	 * -- the only way to attach a real tracked link is to generate it on
+	 * their own site and paste the result in here. Editing the URL field
+	 * must always win over whatever's selected in the provider dropdown,
+	 * writing the pasted URL verbatim rather than trying to "convert" it.
+	 */
+	test('Edit modal saves a manually pasted URL verbatim for a provider that cannot auto-generate one', async ({ page }) => {
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
+
+		const row = page.getByRole('row', { name: /jacket/ });
+		await expect(row).toBeVisible();
+		await row.hover();
+		await row.getByRole('link', { name: 'Edit', exact: true }).click();
+
+		const modal = page.locator('#alm-edit-link-modal');
+		await expect(modal).toBeVisible();
+
+		const pastedUrl = 'https://rstyle.me/+manually-generated-abc123';
+		await modal.locator('#alm-edit-link-url-input').fill(pastedUrl);
+		await modal.locator('#alm-edit-link-provider').selectOption('rewardstyle');
+		await expect(modal.locator('#alm-edit-link-save')).toHaveText('Save URL');
+
+		await modal.locator('#alm-edit-link-save').click();
+
+		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
+		const updatedRow = page.getByRole('row', { name: /jacket/ });
+		await expect(updatedRow.locator('.alm-badge-rewardstyle')).toBeVisible();
 		await expect(updatedRow.locator('.alm-badge-status-active')).toBeVisible();
 	});
 

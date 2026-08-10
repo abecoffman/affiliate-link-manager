@@ -149,6 +149,114 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'href="https://www.zara.com/different-product"', $fresh->post_content, 'The real, current post content must be untouched.' );
 	}
 
+	/**
+	 * The other half of the Edit modal: an explicit replacement URL --
+	 * e.g. a real link the admin already generated on RewardStyle's own
+	 * site and is pasting in -- is written verbatim, no wrap_url()
+	 * involved. This is the *only* way to attach a tracked link for a
+	 * provider that can't build one itself.
+	 */
+	public function test_convert_writes_an_explicit_url_verbatim_for_a_non_wrapping_provider() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'     => $post_id,
+				'provider'    => 'unclassified',
+				'adapter'     => 'post_content',
+				'location'    => '0',
+				'url'         => 'https://www.zara.com/product',
+				'anchor_text' => 'tank top',
+				'status'      => 'convertible',
+			)
+		);
+
+		$pasted_url = 'https://rstyle.me/+manually-generated-abc123';
+		$result     = $this->converter->convert( $item, 'rewardstyle', $pasted_url );
+		$this->assertTrue( $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertSame( 'rewardstyle', $row['provider'] );
+		$this->assertSame( 'active', $row['status'] );
+		$this->assertSame( $pasted_url, $row['url'] );
+
+		clean_post_cache( $post_id );
+		$fresh = get_post( $post_id );
+		$this->assertStringContainsString( 'href="' . $pasted_url . '"', $fresh->post_content );
+	}
+
+	/**
+	 * An explicit URL always wins over auto-generation, even when the
+	 * selected provider *can* wrap -- editing the URL field is a
+	 * deliberate override, not a suggestion wrap_url() second-guesses.
+	 */
+	public function test_convert_prefers_an_explicit_url_over_wrapping_even_for_a_wrap_capable_provider() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'     => $post_id,
+				'provider'    => 'unclassified',
+				'adapter'     => 'post_content',
+				'location'    => '0',
+				'url'         => 'https://www.zara.com/product',
+				'anchor_text' => 'tank top',
+				'status'      => 'convertible',
+			)
+		);
+
+		$pasted_url = 'https://go.shopmy.us/p-already-generated-manually';
+		$result     = $this->converter->convert( $item, 'shopmy', $pasted_url );
+		$this->assertTrue( $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertSame( 'shopmy', $row['provider'] );
+		$this->assertSame( $pasted_url, $row['url'], 'wrap_url() must not have run -- the pasted URL is used exactly as given.' );
+	}
+
+	/**
+	 * Submitting a URL that happens to equal what's already stored must
+	 * behave exactly like not submitting one at all (auto-generate /
+	 * reclassify, per the target provider) -- the "was this actually
+	 * edited?" check is a real equality test, not "was the field present."
+	 */
+	public function test_convert_treats_an_unchanged_submitted_url_the_same_as_no_url() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'     => $post_id,
+				'provider'    => 'unclassified',
+				'adapter'     => 'post_content',
+				'location'    => '0',
+				'url'         => 'https://www.zara.com/product',
+				'anchor_text' => 'tank top',
+				'status'      => 'convertible',
+			)
+		);
+
+		$result = $this->converter->convert( $item, 'shopmy', 'https://www.zara.com/product' );
+		$this->assertTrue( $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertStringContainsString( 'go.shopmy.us/apx/sDXyBS', $row['url'], 'An unchanged submitted URL should still trigger wrap_url(), same as submitting none.' );
+	}
+
 	public function test_convert_to_an_unknown_provider_returns_an_error() {
 		$post_id = self::factory()->post->create(
 			array(

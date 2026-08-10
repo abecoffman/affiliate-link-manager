@@ -243,6 +243,16 @@ table.alm_posts .column-breakdown {
 	word-break: break-all;
 }
 
+#alm-edit-link-url-input {
+	margin-bottom: 4px;
+}
+
+.alm-modal .description {
+	display: block;
+	color: #646970;
+	font-size: 12px;
+}
+
 .alm-modal-help {
 	color: #646970;
 	font-size: 13px;

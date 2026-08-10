@@ -167,10 +167,11 @@
 		var cancelButton = document.getElementById( 'alm-edit-link-cancel' );
 		var postField = document.getElementById( 'alm-edit-link-post' );
 		var anchorField = document.getElementById( 'alm-edit-link-anchor' );
-		var urlField = document.getElementById( 'alm-edit-link-url' );
+		var urlInput = document.getElementById( 'alm-edit-link-url-input' );
 
 		var currentId = null;
 		var originalProvider = null;
+		var originalUrl = null;
 		var triggerElement = null;
 
 		var providerCanWrap = function ( id ) {
@@ -181,11 +182,38 @@
 			return ( almAdmin.providers && almAdmin.providers[ id ] ) ? almAdmin.providers[ id ].label : id;
 		};
 
+		// A row's original provider can be "unclassified" (Candidate/Other
+		// Outbound links) -- the always-matches fallback, deliberately
+		// left out of almAdmin.providers (see
+		// ALM_Admin::get_provider_capabilities()), not a real network
+		// that could ever be "already earning commission." The
+		// force-convert warning below must only fire for an *actual*
+		// known non-wrapping provider (RewardStyle today), never for
+		// this fallback -- otherwise every ordinary Candidate-to-ShopMy
+		// conversion would wrongly trigger it.
+		var isKnownNonWrapProvider = function ( id ) {
+			return !! ( almAdmin.providers && almAdmin.providers[ id ] && ! almAdmin.providers[ id ].canWrap );
+		};
+
+		var urlWasEdited = function () {
+			return urlInput.value.trim() !== originalUrl;
+		};
+
+		// Three save modes, picked the same way ALM_Link_Converter
+		// itself decides server-side (see its docblock): an edited URL
+		// always wins -- pasting in a link already generated on the
+		// network's own site (the only option for a provider that can't
+		// wrap_url() itself, like RewardStyle) always means "save this
+		// exact URL," regardless of which provider is selected.
 		var updateHelpAndSaveLabel = function () {
 			var selected = providerSelect.value;
-			if ( providerCanWrap( selected ) ) {
-				helpText.textContent = almAdmin.strings.convertHelp;
-				saveButton.textContent = almAdmin.strings.convertAndSave;
+
+			if ( urlWasEdited() ) {
+				helpText.textContent = almAdmin.strings.saveUrlHelp;
+				saveButton.textContent = almAdmin.strings.saveUrl;
+			} else if ( providerCanWrap( selected ) ) {
+				helpText.textContent = almAdmin.strings.generateHelp;
+				saveButton.textContent = almAdmin.strings.generateAndSave;
 			} else {
 				helpText.textContent = almAdmin.strings.reclassifyHelp;
 				saveButton.textContent = almAdmin.strings.reclassifyOnly;
@@ -235,10 +263,11 @@
 			triggerElement = link;
 			currentId = link.getAttribute( 'data-id' );
 			originalProvider = link.getAttribute( 'data-provider' );
+			originalUrl = link.getAttribute( 'data-url' );
 
 			postField.textContent = link.getAttribute( 'data-post-title' );
 			anchorField.textContent = link.getAttribute( 'data-anchor' );
-			urlField.textContent = link.getAttribute( 'data-url' );
+			urlInput.value = originalUrl;
 
 			providerSelect.innerHTML = '';
 			if ( almAdmin.providers ) {
@@ -272,6 +301,7 @@
 		} );
 
 		providerSelect.addEventListener( 'change', updateHelpAndSaveLabel );
+		urlInput.addEventListener( 'input', updateHelpAndSaveLabel );
 
 		cancelButton.addEventListener( 'click', closeModal );
 
@@ -290,7 +320,7 @@
 			// per an explicit product decision, this is a real
 			// monetization tradeoff an admin opts into, not a casual
 			// one-click action.
-			if ( originalProvider && originalProvider !== selected && ! providerCanWrap( originalProvider ) && providerCanWrap( selected ) ) {
+			if ( originalProvider && originalProvider !== selected && isKnownNonWrapProvider( originalProvider ) && providerCanWrap( selected ) ) {
 				var warned = window.confirm( almAdmin.strings.forceConvertWarn.replace( '%s', providerLabel( originalProvider ) ) );
 				if ( ! warned ) {
 					return;
@@ -306,6 +336,14 @@
 			body.append( 'nonce', almAdmin.nonce );
 			body.append( 'id', currentId );
 			body.append( 'provider', selected );
+			// Only sent when actually edited -- an unchanged value still
+			// round-tripping through esc_url_raw() server-side could
+			// normalize it (trailing slash, etc.) just differently enough
+			// from the stored value to be misread as an explicit
+			// replacement instead of "use whatever's already there."
+			if ( urlWasEdited() ) {
+				body.append( 'url', urlInput.value.trim() );
+			}
 
 			fetch( almAdmin.ajaxUrl, {
 				method: 'POST',

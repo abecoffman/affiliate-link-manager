@@ -21,9 +21,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<dd id="alm-edit-link-post"></dd>
 			<dt><?php esc_html_e( 'Link text', 'affiliate-link-manager' ); ?></dt>
 			<dd id="alm-edit-link-anchor"></dd>
-			<dt><?php esc_html_e( 'Current URL', 'affiliate-link-manager' ); ?></dt>
-			<dd id="alm-edit-link-url" class="alm-modal-url"></dd>
 		</dl>
+
+		<p>
+			<label for="alm-edit-link-url-input"><?php esc_html_e( 'URL', 'affiliate-link-manager' ); ?></label>
+			<input type="url" id="alm-edit-link-url-input" class="widefat" />
+			<span class="description"><?php esc_html_e( 'Already have a link generated on the network\'s own site (e.g. RewardStyle)? Paste it here.', 'affiliate-link-manager' ); ?></span>
+		</p>
 
 		<p>
 			<label for="alm-edit-link-provider"><?php esc_html_e( 'Provider', 'affiliate-link-manager' ); ?></label>

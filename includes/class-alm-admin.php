@@ -168,11 +168,13 @@ class ALM_Admin {
 					'domainCheckDone'  => __( 'Domain check complete — reloading…', 'affiliate-link-manager' ),
 					'checkDomains'     => __( 'Check Domains', 'affiliate-link-manager' ),
 					'editModalTitle'   => __( 'Edit link', 'affiliate-link-manager' ),
-					'convertAndSave'   => __( 'Convert & Save', 'affiliate-link-manager' ),
+					'generateAndSave'  => __( 'Generate & Save', 'affiliate-link-manager' ),
+					'saveUrl'          => __( 'Save URL', 'affiliate-link-manager' ),
 					'reclassifyOnly'   => __( 'Reclassify Only', 'affiliate-link-manager' ),
 					'saving'           => __( 'Saving…', 'affiliate-link-manager' ),
 					'cancel'           => __( 'Cancel', 'affiliate-link-manager' ),
-					'convertHelp'      => __( 'This will generate a new tracked link for this provider and replace the current URL in the post.', 'affiliate-link-manager' ),
+					'generateHelp'     => __( 'This will generate a new tracked link for this provider and replace the current URL in the post.', 'affiliate-link-manager' ),
+					'saveUrlHelp'      => __( "Saves this URL into the post, replacing what's there now.", 'affiliate-link-manager' ),
 					'reclassifyHelp'   => __( "This provider can't generate tracked links automatically -- this just relabels the record, the post itself won't change.", 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
 					'forceConvertWarn' => __( 'This link is already tracked under %s, which may already be earning commission. Converting will replace it -- are you sure?', 'affiliate-link-manager' ),
@@ -184,11 +186,23 @@ class ALM_Admin {
 	}
 
 	/**
+	 * The Edit modal's provider picker -- deliberately excludes
+	 * ALM_Provider_Generic ("Unclassified"). It's the always-matches
+	 * fallback label the scanner uses when nothing else claimed a URL,
+	 * not a real network an admin would ever deliberately convert *to*;
+	 * offering it as a pickable option was exactly the confusing "what
+	 * do you mean by Unclassified?" this exists to avoid (same reason
+	 * it's excluded from every other part of the UI, see the three-tier
+	 * restructure elsewhere in this class).
+	 *
 	 * @return array<string,array{label:string,canWrap:bool}>
 	 */
 	private function get_provider_capabilities() {
 		$capabilities = array();
 		foreach ( $this->providers->get_providers() as $provider ) {
+			if ( $provider instanceof ALM_Provider_Generic ) {
+				continue;
+			}
 			$capabilities[ $provider->get_id() ] = array(
 				'label'   => $provider->get_label(),
 				'canWrap' => $provider->can_wrap(),
@@ -260,9 +274,20 @@ class ALM_Admin {
 
 		$id          = isset( $_POST['id'] ) ? absint( wp_unslash( $_POST['id'] ) ) : 0;
 		$provider_id = isset( $_POST['provider'] ) ? sanitize_key( wp_unslash( $_POST['provider'] ) ) : '';
+		// Optional -- an explicit replacement URL, e.g. a link the admin
+		// already generated on the network's own site and is pasting in
+		// (the only path for a provider that can't wrap_url() itself,
+		// like RewardStyle). esc_url_raw() both sanitizes and normalizes,
+		// so a trivial formatting difference (trailing slash, etc.)
+		// doesn't get misread by ALM_Link_Converter as "unchanged."
+		$url = ! empty( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ) ) : null; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated -- esc_url_raw() is itself the sanitization here.
 
 		if ( ! $id || '' === $provider_id ) {
 			wp_send_json_error( array( 'message' => __( 'Missing link or provider.', 'affiliate-link-manager' ) ), 400 );
+		}
+
+		if ( null !== $url && '' === $url ) {
+			wp_send_json_error( array( 'message' => __( 'That URL does not look valid.', 'affiliate-link-manager' ) ), 400 );
 		}
 
 		global $wpdb;
@@ -274,7 +299,7 @@ class ALM_Admin {
 			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 404 );
 		}
 
-		$result = $this->converter->convert( $item, $provider_id );
+		$result = $this->converter->convert( $item, $provider_id, $url );
 
 		if ( is_wp_error( $result ) ) {
 			wp_send_json_error( array( 'message' => $result->get_error_message() ) );
