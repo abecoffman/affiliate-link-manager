@@ -6,9 +6,9 @@
  * work, instead of a hand-rolled <table>.
  *
  * Ignore/Delete are pure metadata operations on this plugin's own
- * table. Convert (both the row-level "Edit" action, via
- * ALM_Admin::handle_edit_link()'s AJAX endpoint, and the "Convert to
- * [provider]" bulk action below) is a real content-rewrite --
+ * table. Convert (both clicking a row's own Link cell, which opens
+ * ALM_Admin::handle_edit_link()'s AJAX-backed modal, and the "Convert
+ * to [provider]" bulk action below) is a real content-rewrite --
  * ALM_Provider::wrap_url() + ALM_Content_Adapter::replace_link() --
  * funneled through the shared ALM_Link_Converter so both entry points
  * behave identically.
@@ -58,12 +58,27 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
+	 * Redesigned per explicit user feedback: Status dropped entirely
+	 * (redundant with Affiliate -- a real network name already implies
+	 * "this is a real Affiliate Link," "Unaffiliated" already implies
+	 * it isn't, and the view-tabs above the table already communicate
+	 * status by which tab you're on). "Provider" relabeled "Affiliate"
+	 * to say plainly what it is. Last seen dropped -- ranking by
+	 * "when the scanner last saw this," not anything about the post
+	 * itself, wasn't a signal worth a column; see prepare_items() for
+	 * what sorts the table by default instead.
+	 *
+	 * This one column set now covers what the separate Posts screen
+	 * used to (which posts have which links) -- that screen was
+	 * removed rather than kept as a second, mostly-overlapping way to
+	 * see the same thing.
+	 *
 	 * @return array<string,string>
 	 */
 	public function get_columns() {
 		return array(
-			'cb'          => '<input type="checkbox" />',
-			// anchor_text (the primary column, see get_primary_column_name())
+			'cb'       => '<input type="checkbox" />',
+			// post (the primary column, see get_primary_column_name())
 			// has to be the first column after the checkbox, not just
 			// visually -- WP core's own responsive CSS hides every column
 			// at <=782px via a `th.column-primary ~ th` *following*-sibling
@@ -71,14 +86,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 			// that selector for the columns before it, so they're stuck
 			// half-rendered on narrow screens instead of collapsing into
 			// the row card like every other WP core list table. Confirmed
-			// live: Provider was ahead of Link text here originally, and
-			// broke exactly this way at mobile widths.
-			'anchor_text' => __( 'Link text', 'affiliate-link-manager' ),
-			'provider'    => __( 'Provider', 'affiliate-link-manager' ),
-			'url'         => __( 'URL', 'affiliate-link-manager' ),
-			'post'        => __( 'Post', 'affiliate-link-manager' ),
-			'status'      => __( 'Status', 'affiliate-link-manager' ),
-			'last_seen'   => __( 'Last seen', 'affiliate-link-manager' ),
+			// live, more than once this session, with a different column
+			// out of order each time.
+			'post'     => __( 'Post', 'affiliate-link-manager' ),
+			'link'     => __( 'Link', 'affiliate-link-manager' ),
+			'provider' => __( 'Affiliate', 'affiliate-link-manager' ),
+			'url'      => __( 'URL', 'affiliate-link-manager' ),
 		);
 	}
 
@@ -86,7 +99,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * @return string
 	 */
 	protected function get_primary_column_name() {
-		return 'anchor_text';
+		return 'post';
 	}
 
 	/**
@@ -106,9 +119,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 */
 	protected function get_sortable_columns() {
 		return array(
-			'provider'  => array( 'provider', false ),
-			'status'    => array( 'status', false ),
-			'last_seen' => array( 'last_seen', true ),
+			'provider' => array( 'provider', false ),
 		);
 	}
 
@@ -144,9 +155,11 @@ class ALM_Links_List_Table extends WP_List_Table {
 
 	/**
 	 * Single source of truth for status display text -- used by
-	 * get_views() (the tab bar), column_status() (the per-row badge),
-	 * and the Dashboard, so none of them can drift out of sync on
-	 * wording. Two forms of the same mapping, not two separate ones:
+	 * get_views() (the tab bar) and the Dashboard, so the two can never
+	 * drift out of sync on wording. No longer has a per-row badge of
+	 * its own (the Links table's Status column was removed -- redundant
+	 * with Affiliate, and which tab you're on already says the status).
+	 * Two forms of the same mapping, not two separate ones:
 	 * $long is for section/tab-level text ("Affiliate Links",
 	 * "Candidate Affiliate Links" -- the three-tier framing the user
 	 * asked for), $short is for the per-row status badge, where the
@@ -325,14 +338,20 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$current_page = $this->get_pagenum();
 
 		global $wpdb;
-		$table = ALM_Install::table_name();
+		$table       = ALM_Install::table_name();
+		$posts_table = $wpdb->posts;
 
+		// "alm." throughout below isn't defensive over-qualification --
+		// it's load-bearing now that this query joins wp_posts, so a
+		// bare column name can never silently resolve to the wrong
+		// table's column if a future WP core version adds one with the
+		// same name.
 		$where  = array( '1=1' );
 		$params = array();
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filters, not a state-changing action.
 		if ( ! empty( $_GET['status'] ) ) {
-			$where[]  = 'status = %s';
+			$where[]  = 'alm.status = %s';
 			$params[] = sanitize_key( wp_unslash( $_GET['status'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		} else {
 			// "All" (no explicit status param) means all three visible
@@ -341,19 +360,19 @@ class ALM_Links_List_Table extends WP_List_Table {
 			// Dashboard. A direct ?status=unclassified link (e.g. an old
 			// bookmark) still works via the branch above; this exclusion
 			// only applies to the unfiltered default.
-			$where[]  = 'status != %s';
+			$where[]  = 'alm.status != %s';
 			$params[] = ALM_Install::STATUS_UNCLASSIFIED;
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( ! empty( $_GET['provider'] ) ) {
-			$where[]  = 'provider = %s';
+			$where[]  = 'alm.provider = %s';
 			$params[] = sanitize_key( wp_unslash( $_GET['provider'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		}
 
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter; how the Posts screen's "View Links" row action drills in.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter, e.g. a manually-constructed link filtered to one post.
 		if ( ! empty( $_GET['post_id'] ) ) {
-			$where[]  = 'post_id = %d';
+			$where[]  = 'alm.post_id = %d';
 			$params[] = absint( wp_unslash( $_GET['post_id'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		}
 
@@ -361,30 +380,48 @@ class ALM_Links_List_Table extends WP_List_Table {
 		if ( ! empty( $_GET['s'] ) ) {
 			$search   = sanitize_text_field( wp_unslash( $_GET['s'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			$like     = '%' . $wpdb->esc_like( $search ) . '%';
-			$where[]  = '(url LIKE %s OR anchor_text LIKE %s)';
+			$where[]  = '(alm.url LIKE %s OR alm.anchor_text LIKE %s)';
 			$params[] = $like;
 			$params[] = $like;
 		}
 
 		$where_sql = implode( ' AND ', $where );
 
-		$allowed_orderby = array( 'provider', 'status', 'last_seen' );
+		// Only "Affiliate" is a clickable sortable column now (Status and
+		// Last seen are both gone -- see get_columns()). Default order is
+		// by the *post's* publish date, not anything on this plugin's own
+		// table -- explicit product decision: rank by the posts, not by
+		// when the scanner happened to last see a link. A real engagement
+		// metric (pageviews, etc.) is a planned future replacement for
+		// this default; post date is what's available with zero new
+		// infrastructure today.
+		$allowed_orderby = array(
+			'provider'  => 'alm.provider',
+			'post_date' => 'p.post_date',
+		);
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only sort selection.
-		$orderby = ( isset( $_GET['orderby'] ) && in_array( wp_unslash( $_GET['orderby'] ), $allowed_orderby, true ) ) ? sanitize_key( wp_unslash( $_GET['orderby'] ) ) : 'last_seen'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$orderby_key = ( isset( $_GET['orderby'] ) && isset( $allowed_orderby[ sanitize_key( wp_unslash( $_GET['orderby'] ) ) ] ) ) ? sanitize_key( wp_unslash( $_GET['orderby'] ) ) : 'post_date'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$orderby_sql = $allowed_orderby[ $orderby_key ];
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$order = ( isset( $_GET['order'] ) && 'asc' === strtolower( sanitize_key( wp_unslash( $_GET['order'] ) ) ) ) ? 'ASC' : 'DESC'; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
+		// Count doesn't need the join -- every filter above is on alm's
+		// own columns.
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + column names are fixed/allow-listed above, never raw user input; real values go through prepare() below.
-		$count_sql   = "SELECT COUNT(*) FROM {$table} WHERE {$where_sql}";
+		$count_sql   = "SELECT COUNT(*) FROM {$table} alm WHERE {$where_sql}";
 		$total_items = (int) ( $params ? $wpdb->get_var( $wpdb->prepare( $count_sql, $params ) ) : $wpdb->get_var( $count_sql ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- $count_sql has no raw user input when $params is empty.
 
 		$offset = ( $current_page - 1 ) * $per_page;
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above; $orderby/$order are allow-listed, not raw user input.
-		$data_sql    = "SELECT * FROM {$table} WHERE {$where_sql} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d";
+		// LEFT JOIN, not INNER -- a link whose post was deleted after
+		// being scanned must still show up (with $orderby_sql='p.post_date'
+		// naturally sorting it as if p.post_date is NULL, i.e. last),
+		// rather than silently vanishing from the table entirely.
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above; $orderby_sql/$order are allow-listed, not raw user input.
+		$data_sql    = "SELECT alm.* FROM {$table} alm LEFT JOIN {$posts_table} p ON p.ID = alm.post_id WHERE {$where_sql} ORDER BY {$orderby_sql} {$order} LIMIT %d OFFSET %d";
 		$data_params = array_merge( $params, array( $per_page, $offset ) );
 		$this->items = $wpdb->get_results( $wpdb->prepare( $data_sql, $data_params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
-		// column_anchor_text()/column_post() call get_the_title()/
+		// column_post()/column_link() call get_the_title()/
 		// get_edit_post_link()/get_permalink() per row, each an uncached
 		// get_post() query without this -- a real N+1 confirmed at
 		// honestlywtf's scale (37,000+ rows), not just a theoretical one.
@@ -521,15 +558,8 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
-	 * Primary column -- carries this row's row_actions() (Edit, View,
-	 * Ignore, Delete).
-	 *
-	 * @param array $item
-	 * @return string
-	 */
-	/**
 	 * On this WP core version, row_actions() (called below, from
-	 * column_anchor_text()) already appends its own "Show more details"
+	 * column_post()) already appends its own "Show more details"
 	 * toggle-row button as part of its return value -- but
 	 * single_row_columns() *also* unconditionally appends one of its own
 	 * for the primary column via this method, producing two identical
@@ -539,7 +569,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * handle_row_actions() independently emit the button. Deferring
 	 * entirely to row_actions()'s own copy here, rather than trying to
 	 * suppress it there (that method belongs to WP core, not this
-	 * plugin).
+	 * plugin). row_actions() itself doesn't care which column calls it
+	 * (confirmed against WP core's own source, not just observed
+	 * behavior) -- it always appends the toggle button, and WP core's
+	 * hover-to-reveal CSS for .row-actions is scoped to `tr:hover`, not
+	 * `.column-primary`, so calling it from column_post() rather than
+	 * this row's actual primary column works identically either way.
 	 *
 	 * @param object|array $item
 	 * @param string       $column_name
@@ -550,44 +585,30 @@ class ALM_Links_List_Table extends WP_List_Table {
 		return '';
 	}
 
-	public function column_anchor_text( $item ) {
-		$actions = array();
+	/**
+	 * Primary column: the post title, linking straight to its editor --
+	 * carries this row's row_actions() (View, Ignore, Delete). "Edit"
+	 * is deliberately not one of these: that's the Link column's own
+	 * job now (clicking the link text itself opens the URL-editing
+	 * modal), not a separate row action underneath a different column.
+	 *
+	 * @param array $item
+	 * @return string
+	 */
+	public function column_post( $item ) {
+		$title      = get_the_title( $item['post_id'] );
+		$title      = $title ? $title : '#' . $item['post_id'];
+		$edit_link  = get_edit_post_link( $item['post_id'], 'raw' );
+		$title_cell = $edit_link
+			? sprintf( '<a href="%s">%s</a>', esc_url( $edit_link ), esc_html( $title ) )
+			: esc_html( $title );
 
-		// Not its own row action here -- redundant with, and confusable
-		// next to, "Edit" below (this row's own action, opening the URL-
-		// editing modal). Still computed: passed through as
-		// data-post-edit-url so the modal itself can offer it, right
-		// next to the post title where it belongs contextually.
-		$edit_link = get_edit_post_link( $item['post_id'], 'raw' );
+		$actions = array();
 
 		$view_link = get_permalink( $item['post_id'] );
 		if ( $view_link ) {
 			$actions['view'] = sprintf( '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>', esc_url( $view_link ), esc_html__( 'View', 'affiliate-link-manager' ) );
 		}
-
-		// Opens the JS-driven Edit modal (assets/admin.js) -- data
-		// attributes carry everything the modal needs to render without
-		// a round-trip, since this row already has it all server-side
-		// (the one exception is re-matching the provider live as the
-		// admin edits the URL, which does need a round-trip -- see
-		// ALM_Admin::handle_match_provider()). href="#" with an explicit
-		// click handler, not a real link: this never navigates, same as
-		// WP core's own inline-edit row actions.
-		$provider_obj         = $this->providers->get_provider( $item['provider'] );
-		$context              = $this->get_link_context( $item );
-		$actions['edit_link'] = sprintf(
-			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-url="%4$s" data-anchor="%5$s" data-provider="%6$s" data-provider-label="%7$s" data-context-before="%8$s" data-context-after="%9$s">%10$s</a>',
-			(int) $item['id'],
-			esc_attr( get_the_title( $item['post_id'] ) ),
-			esc_attr( $edit_link ? $edit_link : '' ),
-			esc_attr( $item['url'] ),
-			esc_attr( $item['anchor_text'] ),
-			esc_attr( $item['provider'] ),
-			esc_attr( $provider_obj ? self::provider_display_label( $provider_obj ) : $item['provider'] ),
-			esc_attr( $context ? $context['before'] : '' ),
-			esc_attr( $context ? $context['after'] : '' ),
-			esc_html__( 'Edit', 'affiliate-link-manager' )
-		);
 
 		if ( ALM_Install::STATUS_IGNORED !== $item['status'] ) {
 			$actions['ignore'] = sprintf( '<a href="%s">%s</a>', esc_url( $this->row_action_url( 'ignore', $item['id'] ) ), esc_html__( 'Ignore', 'affiliate-link-manager' ) );
@@ -611,7 +632,41 @@ class ALM_Links_List_Table extends WP_List_Table {
 			esc_html__( 'Delete', 'affiliate-link-manager' )
 		);
 
-		return esc_html( $item['anchor_text'] ) . $this->row_actions( $actions );
+		return $title_cell . $this->row_actions( $actions );
+	}
+
+	/**
+	 * The link's own text -- clicking it opens the JS-driven Edit modal
+	 * (assets/admin.js) directly, no separate "Edit" action needed. Data
+	 * attributes carry everything the modal needs to render without a
+	 * round-trip, since this row already has it all server-side (the
+	 * one exception is re-matching the provider live as the admin edits
+	 * the URL, which does need a round-trip -- see
+	 * ALM_Admin::handle_match_provider()). href="#" with an explicit
+	 * click handler, not a real link: this never navigates, same as WP
+	 * core's own inline-edit actions.
+	 *
+	 * @param array $item
+	 * @return string
+	 */
+	public function column_link( $item ) {
+		$edit_link    = get_edit_post_link( $item['post_id'], 'raw' );
+		$provider_obj = $this->providers->get_provider( $item['provider'] );
+		$context      = $this->get_link_context( $item );
+
+		return sprintf(
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-url="%4$s" data-anchor="%5$s" data-provider="%6$s" data-provider-label="%7$s" data-context-before="%8$s" data-context-after="%9$s">%10$s</a>',
+			(int) $item['id'],
+			esc_attr( get_the_title( $item['post_id'] ) ),
+			esc_attr( $edit_link ? $edit_link : '' ),
+			esc_attr( $item['url'] ),
+			esc_attr( $item['anchor_text'] ),
+			esc_attr( $item['provider'] ),
+			esc_attr( $provider_obj ? self::provider_display_label( $provider_obj ) : $item['provider'] ),
+			esc_attr( $context ? $context['before'] : '' ),
+			esc_attr( $context ? $context['after'] : '' ),
+			esc_html( $item['anchor_text'] )
+		);
 	}
 
 	/**
@@ -660,31 +715,6 @@ class ALM_Links_List_Table extends WP_List_Table {
 			esc_url( $item['url'] ),
 			esc_html( $item['url'] )
 		);
-	}
-
-	/**
-	 * @param array $item
-	 * @return string
-	 */
-	public function column_post( $item ) {
-		$title = get_the_title( $item['post_id'] );
-		return esc_html( $title ? $title : '#' . $item['post_id'] );
-	}
-
-	/**
-	 * @param array $item
-	 * @return string
-	 */
-	public function column_status( $item ) {
-		return sprintf( '<span class="alm-badge alm-badge-status-%s">%s</span>', esc_attr( $item['status'] ), esc_html( self::status_label( $item['status'] ) ) );
-	}
-
-	/**
-	 * @param array $item
-	 * @return string
-	 */
-	public function column_last_seen( $item ) {
-		return esc_html( mysql2date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $item['last_seen'] ) );
 	}
 
 	/**

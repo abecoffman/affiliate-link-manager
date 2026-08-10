@@ -149,13 +149,13 @@
 	}
 
 	/**
-	 * Edit-link modal: opened from an .alm-edit-link row action
-	 * (ALM_Links_List_Table::column_anchor_text()), which carries
-	 * everything the modal needs in data-* attributes -- no fetch
-	 * needed just to open it. Hand-rolled (wp-admin has no native
-	 * modal widget): focus trap, ESC-to-close, and returning focus to
-	 * the row action on close are the accessibility baseline this is
-	 * built to, not optional extras.
+	 * Edit-link modal: opened by clicking a row's own Link cell
+	 * (ALM_Links_List_Table::column_link()), which carries everything
+	 * the modal needs in data-* attributes -- no fetch needed just to
+	 * open it. Hand-rolled (wp-admin has no native modal widget): focus
+	 * trap, ESC-to-close, and returning focus to the trigger on close
+	 * are the accessibility baseline this is built to, not optional
+	 * extras.
 	 *
 	 * Deliberately has no provider picker -- the affiliate network is
 	 * always inferred from the URL, live, via

@@ -101,7 +101,6 @@ test.describe('Affiliate Links admin screens', () => {
 	const screens = [
 		{ name: 'Dashboard', path: '/wp-admin/admin.php?page=affiliate-links', heading: 'Affiliate Links' },
 		{ name: 'Links', path: '/wp-admin/admin.php?page=affiliate-links-links', heading: 'Affiliate Links' },
-		{ name: 'Posts', path: '/wp-admin/admin.php?page=affiliate-links-posts', heading: 'Posts' },
 		{ name: 'Providers', path: '/wp-admin/admin.php?page=affiliate-links-providers', heading: 'Affiliate Links' },
 		{ name: 'Settings', path: '/wp-admin/admin.php?page=affiliate-links-settings', heading: 'Affiliate Links' },
 	];
@@ -161,14 +160,15 @@ test.describe('Affiliate Links admin screens', () => {
 	});
 
 	/**
-	 * Regression guard: "Edit Post" was a separate row action here,
-	 * confusingly similar to this row's own "Edit" action (opens the
-	 * URL-editing modal) -- removed per explicit feedback and moved
-	 * into the modal itself, next to the post title where it actually
-	 * belongs contextually, rather than living twice in two different
-	 * places with near-identical names.
+	 * Regression guard for the redesigned table (Post | Link | Affiliate
+	 * | URL, no Status/Last seen column, no separate Posts screen): the
+	 * Post cell's own title links straight to the post editor and
+	 * carries View/Ignore/Delete as row actions; there is no "Edit" or
+	 * "Edit Post" row action at all -- clicking the Link cell's own
+	 * text is what opens the URL-editing modal, and "Edit Post" lives
+	 * only inside that modal, next to the post title.
 	 */
-	test('Links screen row actions do not include a separate "Edit Post" (moved into the modal)', async ({ page }) => {
+	test('Links screen has no separate Edit/Edit Post row actions -- the Link cell itself opens the modal', async ({ page }) => {
 		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
 
 		const row = page.getByRole('row', { name: /a very long product name/ });
@@ -176,9 +176,10 @@ test.describe('Affiliate Links admin screens', () => {
 		await row.hover();
 
 		await expect(row.getByRole('link', { name: 'Edit Post', exact: true })).toHaveCount(0);
-		await expect(row.getByRole('link', { name: 'Edit', exact: true })).toBeVisible();
+		await expect(row.getByRole('link', { name: 'Edit', exact: true })).toHaveCount(0);
+		await expect(row.getByRole('link', { name: 'View', exact: true })).toBeVisible();
 
-		await row.getByRole('link', { name: 'Edit', exact: true }).click();
+		await row.getByRole('link', { name: /a very long product name/ }).click();
 		const modal = page.locator('#alm-edit-link-modal');
 		await expect(modal).toBeVisible();
 		await expect(modal.getByRole('link', { name: 'Edit Post', exact: true })).toBeVisible();
@@ -198,7 +199,7 @@ test.describe('Affiliate Links admin screens', () => {
 		const row = page.getByRole('row', { name: /a very long product name/ });
 		await expect(row).toBeVisible();
 		await row.hover();
-		await row.getByRole('link', { name: 'Edit', exact: true }).click();
+		await row.getByRole('link', { name: /a very long product name/ }).click();
 
 		const modal = page.locator('#alm-edit-link-modal');
 		await expect(modal).toBeVisible();
@@ -213,12 +214,17 @@ test.describe('Affiliate Links admin screens', () => {
 		await modal.locator('#alm-edit-link-save').click();
 
 		// Save reloads the page on success (same convention as Run
-		// Scan/Check Domains) -- the row's own badges are the real
-		// assertion, not just that the modal closed.
+		// Scan/Check Domains) -- the row's own Affiliate badge is the
+		// real assertion, not just that the modal closed. The Links
+		// table no longer has a Status column (removed as redundant with
+		// Affiliate), so status=active is confirmed here via the
+		// "Affiliate Links" tab actually surfacing the row, not a badge.
 		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
 		const updatedRow = page.getByRole('row', { name: /a very long product name/ });
 		await expect(updatedRow.locator('.alm-badge-shopmy')).toBeVisible();
-		await expect(updatedRow.locator('.alm-badge-status-active')).toBeVisible();
+
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-links&status=active');
+		await expect(page.getByRole('row', { name: /a very long product name/ })).toBeVisible();
 	});
 
 	/**
@@ -233,7 +239,7 @@ test.describe('Affiliate Links admin screens', () => {
 		const row = page.getByRole('row', { name: /jacket/ });
 		await expect(row).toBeVisible();
 		await row.hover();
-		await row.getByRole('link', { name: 'Edit', exact: true }).click();
+		await row.getByRole('link', { name: /jacket/ }).click();
 
 		const modal = page.locator('#alm-edit-link-modal');
 		await expect(modal).toBeVisible();
@@ -247,7 +253,9 @@ test.describe('Affiliate Links admin screens', () => {
 		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
 		const updatedRow = page.getByRole('row', { name: /jacket/ });
 		await expect(updatedRow.locator('.alm-badge-rewardstyle')).toBeVisible();
-		await expect(updatedRow.locator('.alm-badge-status-active')).toBeVisible();
+
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-links&status=active');
+		await expect(page.getByRole('row', { name: /jacket/ })).toBeVisible();
 	});
 
 	/**
@@ -295,51 +303,23 @@ test.describe('Affiliate Links admin screens', () => {
 				await expect(page.locator('.alm-links-table')).toBeVisible();
 			}
 
-			if ('Posts' === screen.name) {
-				await expect(page.locator('table.alm_posts')).toBeVisible();
-			}
-
 			await expectNoHorizontalOverflow(page);
 			expect(consoleErrors).toEqual([]);
 		});
 	}
 
-	test('Posts screen "View Links" drills into the Links screen filtered to that post', async ({ page }) => {
-		await page.goto('/wp-admin/admin.php?page=affiliate-links-posts');
-
-		// WP_List_Table's row actions (row_actions()) are core-styled with
-		// `.row-actions { position: relative; left: -9999em; }`, only
-		// brought on-screen on row hover/focus -- the same as every other
-		// WP core list table (Posts, Plugins, ...). Hover the row first,
-		// the way a real user would, instead of clicking a link core CSS
-		// is deliberately keeping off-canvas until then.
-		const row = page.getByRole('row', { name: /ALM E2E fixture post/ });
-		await expect(row).toBeVisible();
-		await row.hover();
-		await row.getByRole('link', { name: 'View Links' }).click();
-
-		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
-		await expect(page.getByText('Showing links found in:')).toBeVisible();
-		// The post title legitimately appears twice now -- once in the
-		// filter notice, once in the filtered row's own Post column.
-		await expect(page.getByText('ALM E2E fixture post')).toHaveCount(2);
-
-		// Clearing the filter goes back to the unfiltered Links screen.
-		await page.getByRole('link', { name: 'Clear' }).click();
-		await expect(page.getByText('Showing links found in:')).not.toBeVisible();
-	});
-
 	/**
-	 * Real regression this guards: the Links table's primary column
-	 * ("Link text") originally wasn't the first data column -- Provider
-	 * came before it. WP core's own responsive CSS hides non-primary
-	 * columns via a `th.column-primary ~ th` *following*-sibling
-	 * selector, which can only ever match columns that come *after* the
-	 * primary one in the DOM. With Provider first, that selector could
-	 * never hide it, so at <=782px its header text rendered broken and
-	 * overlapping "Link text" instead of collapsing into the row card
-	 * like every other WP core list table. Found by actually resizing a
-	 * live browser, not by reading the markup.
+	 * Real regression this guards, reconfirmed against the redesigned
+	 * column set (Post | Link | Affiliate | URL): WP core's own
+	 * responsive CSS hides non-primary columns via a
+	 * `th.column-primary ~ th` *following*-sibling selector, which can
+	 * only ever match columns that come *after* the primary one in the
+	 * DOM -- the primary column (now "Post") has to be first, or its
+	 * header renders broken and overlapping instead of collapsing into
+	 * the row card like every other WP core list table. Found by
+	 * actually resizing a live browser, not by reading the markup, more
+	 * than once this session with a different column out of order each
+	 * time.
 	 */
 	test('Links screen collapses correctly on narrow screens (primary column first)', async ({ page }) => {
 		await page.setViewportSize({ width: 600, height: 900 });
@@ -348,7 +328,7 @@ test.describe('Affiliate Links admin screens', () => {
 		// Only the primary column's header should be visible -- every
 		// other column header is hidden by WP core's own responsive CSS,
 		// which only works when the primary column is the first one.
-		await expect(page.locator('thead th#anchor_text')).toBeVisible();
+		await expect(page.locator('thead th#post')).toBeVisible();
 		await expect(page.locator('thead th#provider')).toBeHidden();
 
 		await expectNoHorizontalOverflow(page);
@@ -357,31 +337,32 @@ test.describe('Affiliate Links admin screens', () => {
 		// detail rows, proving the collapse/expand mechanism actually
 		// works end to end, not just that the header looks right. Also
 		// guards a second real bug found alongside the first: WP core's
-		// row_actions() (called from column_anchor_text()) already
-		// appends its own toggle-row button on this WP core version, and
+		// row_actions() (called from column_post()) already appends its
+		// own toggle-row button on this WP core version, and
 		// single_row_columns() unconditionally appends a second one for
 		// the primary column -- exactly one "Show more details" button
 		// per row, not two, confirms that duplication stays fixed.
 		const firstRow = page.locator('tbody tr').first();
 		await expect(firstRow.locator('button.toggle-row')).toHaveCount(1);
 		await firstRow.locator('button.toggle-row').click();
-		// The "Provider"/"Status" labels visible in the expanded card are
+		// The "Link"/"Affiliate" labels visible in the expanded card are
 		// WP core's own CSS -- `content: attr(data-colname)` on a
 		// ::before pseudo-element -- not real DOM text, so getByText()
 		// can't see them. Checking the data-colname attribute directly
 		// (what that CSS actually reads) proves the same thing: the
 		// columns are really there and correctly labeled, not just that
 		// the header looked right.
-		await expect(firstRow.locator('td[data-colname="Provider"]')).toBeVisible();
-		await expect(firstRow.locator('td[data-colname="Status"]')).toBeVisible();
+		await expect(firstRow.locator('td[data-colname="Link"]')).toBeVisible();
+		await expect(firstRow.locator('td[data-colname="Affiliate"]')).toBeVisible();
 	});
 
 	test('edit.php (the native Posts list) does not carry an Affiliate Links column', async ({ page }) => {
-		// Removed deliberately -- the plugin's own dedicated Posts screen
-		// (affiliate-links-posts) covers this, and edit.php was too
-		// crowded already. Real regression guard, not just "nothing to
-		// test": the column key/class would still be present in the DOM
-		// if ALM_Posts_Column were ever accidentally re-wired in.
+		// Removed deliberately -- the plugin's own Links screen (with
+		// its own Post column, linking straight to the editor) covers
+		// this, and edit.php was too crowded already. Real regression
+		// guard, not just "nothing to test": the column key/class would
+		// still be present in the DOM if ALM_Posts_Column were ever
+		// accidentally re-wired in.
 		await page.goto('/wp-admin/edit.php');
 
 		await expect(page.locator('th#alm_links')).toHaveCount(0);

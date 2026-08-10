@@ -1,8 +1,10 @@
 <?php
 /**
  * Admin UI controller: registers the top-level "Affiliate Links" menu
- * and its four screens, and handles the AJAX scan-batch endpoint plus
- * the plain POST-and-redirect settings/provider forms.
+ * and its screens (Dashboard, Links, Providers, Settings -- no
+ * separate Posts screen, see register_menu()), and handles the AJAX
+ * scan-batch endpoint plus the plain POST-and-redirect settings/
+ * provider forms.
  *
  * @package ALM
  */
@@ -104,14 +106,10 @@ class ALM_Admin {
 		// this early, not inside their list table's display path).
 		add_action( "load-{$links_hook}", array( $this, 'handle_links_bulk_action' ) );
 
-		add_submenu_page(
-			self::MENU_SLUG,
-			__( 'Posts', 'affiliate-link-manager' ),
-			__( 'Posts', 'affiliate-link-manager' ),
-			self::CAPABILITY,
-			self::MENU_SLUG . '-posts',
-			array( $this, 'render_posts' )
-		);
+		// No separate Posts screen -- the Links table's own Post/Link/
+		// Affiliate columns now cover the same job (which posts have
+		// which links) that screen existed for. Removed rather than kept
+		// as a second, mostly-overlapping way to see the same thing.
 
 		add_submenu_page(
 			self::MENU_SLUG,
@@ -405,12 +403,6 @@ class ALM_Admin {
 		$list_table = new ALM_Links_List_Table( $this->providers, $this->adapters, $this->converter );
 		$list_table->prepare_items();
 		require ALM_PATH . 'includes/views/links.php';
-	}
-
-	public function render_posts() {
-		$list_table = new ALM_Posts_List_Table( $this->providers );
-		$list_table->prepare_items();
-		require ALM_PATH . 'includes/views/posts.php';
 	}
 
 	public function render_providers() {
