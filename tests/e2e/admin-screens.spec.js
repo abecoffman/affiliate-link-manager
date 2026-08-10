@@ -161,6 +161,30 @@ test.describe('Affiliate Links admin screens', () => {
 	});
 
 	/**
+	 * Regression guard: "Edit Post" was a separate row action here,
+	 * confusingly similar to this row's own "Edit" action (opens the
+	 * URL-editing modal) -- removed per explicit feedback and moved
+	 * into the modal itself, next to the post title where it actually
+	 * belongs contextually, rather than living twice in two different
+	 * places with near-identical names.
+	 */
+	test('Links screen row actions do not include a separate "Edit Post" (moved into the modal)', async ({ page }) => {
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
+
+		const row = page.getByRole('row', { name: /a very long product name/ });
+		await expect(row).toBeVisible();
+		await row.hover();
+
+		await expect(row.getByRole('link', { name: 'Edit Post', exact: true })).toHaveCount(0);
+		await expect(row.getByRole('link', { name: 'Edit', exact: true })).toBeVisible();
+
+		await row.getByRole('link', { name: 'Edit', exact: true }).click();
+		const modal = page.locator('#alm-edit-link-modal');
+		await expect(modal).toBeVisible();
+		await expect(modal.getByRole('link', { name: 'Edit Post', exact: true })).toBeVisible();
+	});
+
+	/**
 	 * The single-row Edit modal, end to end: opens pre-filled from the
 	 * row's own data attributes, pasting a URL live re-infers the
 	 * "Affiliate partner" display (ALM_Admin::handle_match_provider(),

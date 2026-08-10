@@ -278,17 +278,25 @@
 			originalUrl = link.getAttribute( 'data-url' );
 			matchedProviderId = originalProviderId;
 
+			// The title itself is plain text, not a link -- "Edit Post"
+			// is its own explicit action right next to it instead
+			// (previously a separate row action on the Links screen,
+			// confusingly similar to this modal's own "Edit" action;
+			// moved here where it actually belongs, next to the post
+			// it's about).
 			postField.textContent = '';
+			postField.appendChild( document.createTextNode( link.getAttribute( 'data-post-title' ) ) );
+
 			var postEditUrl = link.getAttribute( 'data-post-edit-url' );
 			if ( postEditUrl ) {
 				var postLink = document.createElement( 'a' );
 				postLink.href = postEditUrl;
 				postLink.target = '_blank';
 				postLink.rel = 'noopener noreferrer';
-				postLink.textContent = link.getAttribute( 'data-post-title' );
+				postLink.className = 'alm-modal-edit-post-link';
+				postLink.textContent = almAdmin.strings.editPost;
+				postField.appendChild( document.createTextNode( ' ' ) );
 				postField.appendChild( postLink );
-			} else {
-				postField.textContent = link.getAttribute( 'data-post-title' );
 			}
 
 			providerDisplay.textContent = originalProviderLabel;

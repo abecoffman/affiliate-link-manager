@@ -171,6 +171,7 @@ class ALM_Admin {
 					'domainCheckDone'  => __( 'Domain check complete — reloading…', 'affiliate-link-manager' ),
 					'checkDomains'     => __( 'Check Domains', 'affiliate-link-manager' ),
 					'editModalTitle'   => __( 'Edit link', 'affiliate-link-manager' ),
+					'editPost'         => __( 'Edit Post', 'affiliate-link-manager' ),
 					'save'             => __( 'Save', 'affiliate-link-manager' ),
 					'saving'           => __( 'Saving…', 'affiliate-link-manager' ),
 					'cancel'           => __( 'Cancel', 'affiliate-link-manager' ),

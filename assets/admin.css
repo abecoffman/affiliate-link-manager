@@ -243,6 +243,14 @@ table.alm_posts .column-breakdown {
 	word-break: break-all;
 }
 
+/* "Edit Post" next to the post title -- a secondary action, not the
+   main point of this row, same visual weight as WP core's own
+   .row-actions links (small, not competing with the title itself). */
+.alm-modal-edit-post-link {
+	font-size: 12px;
+	margin-left: 4px;
+}
+
 /* The Link text snippet -- before/anchor/after, mirroring how the link
    actually reads in place in the post (ALM_Content_Adapter::get_context()) --
    rather than just the isolated anchor text on its own. */

@@ -521,8 +521,8 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
-	 * Primary column -- carries this row's row_actions() (Edit Post,
-	 * View Post, Ignore, Delete).
+	 * Primary column -- carries this row's row_actions() (Edit, View,
+	 * Ignore, Delete).
 	 *
 	 * @param array $item
 	 * @return string
@@ -553,10 +553,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 	public function column_anchor_text( $item ) {
 		$actions = array();
 
+		// Not its own row action here -- redundant with, and confusable
+		// next to, "Edit" below (this row's own action, opening the URL-
+		// editing modal). Still computed: passed through as
+		// data-post-edit-url so the modal itself can offer it, right
+		// next to the post title where it belongs contextually.
 		$edit_link = get_edit_post_link( $item['post_id'], 'raw' );
-		if ( $edit_link ) {
-			$actions['edit'] = sprintf( '<a href="%s">%s</a>', esc_url( $edit_link ), esc_html__( 'Edit Post', 'affiliate-link-manager' ) );
-		}
 
 		$view_link = get_permalink( $item['post_id'] );
 		if ( $view_link ) {
