@@ -1,13 +1,15 @@
 <?php
 /**
- * Dashboard screen: total links found, breakdown by provider (each
- * linking into Links filtered to it), a "Needs attention" panel for
- * unclassified/stale counts, the last-scan delta, and the Run Scan
- * control.
+ * Dashboard screen: the three-tier headline (Affiliate Links / Candidate
+ * Affiliate Links / Other Outbound Links -- the last one deliberately
+ * just a summary number, never a browsable list), a per-network
+ * sub-breakdown for real Affiliate Links, a "Needs attention" panel,
+ * the last-scan delta, and the Run Scan / Check Domains controls.
  *
  * @package ALM
  *
  * @var array<string,array{label:string,count:int}> $stats
+ * @var array<string,int>                            $status_summary
  * @var array<string,int>                            $needs_attention
  * @var array{new_links?:int,now_stale?:int}          $scan_delta
  * @var array{checked:int,pending:int,confirmed_shops:int,confirmed_noise:int} $domain_check
@@ -29,7 +31,6 @@ $alm_links_url = static function ( $args = array() ) {
 };
 
 $last_scan = get_option( 'alm_last_scan_time', '' );
-$total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 ?>
 <div class="wrap alm-wrap">
 	<h1><?php esc_html_e( 'Affiliate Links', 'affiliate-link-manager' ); ?></h1>
@@ -62,21 +63,29 @@ $total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 			</p>
 		</div>
 
-		<p class="alm-total-count">
-			<?php
-			printf(
-				/* translators: %d: total number of links found */
-				esc_html(
-					/* translators: %d: total number of links found */
-					_n( '%d link found', '%d links found', $total, 'affiliate-link-manager' )
-				),
-				(int) $total
-			);
-			?>
-		</p>
+		<table class="alm-provider-breakdown alm-status-headline">
+			<tbody>
+				<tr>
+					<td>
+						<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_ACTIVE ) ) ); ?>">
+							<span class="alm-badge alm-badge-status-active"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_ACTIVE, true ) ); ?></span>
+						</a>
+					</td>
+					<td><?php echo esc_html( $status_summary[ ALM_Install::STATUS_ACTIVE ] ); ?></td>
+				</tr>
+				<tr>
+					<td>
+						<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_CONVERTIBLE ) ) ); ?>">
+							<span class="alm-badge alm-badge-status-convertible"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_CONVERTIBLE, true ) ); ?></span>
+						</a>
+					</td>
+					<td><?php echo esc_html( $status_summary[ ALM_Install::STATUS_CONVERTIBLE ] ); ?></td>
+				</tr>
+			</tbody>
+		</table>
 
 		<?php if ( ! empty( $stats ) ) : ?>
-			<table class="alm-provider-breakdown">
+			<table class="alm-provider-breakdown alm-provider-sub-breakdown">
 				<tbody>
 				<?php foreach ( $stats as $provider_id => $row ) : ?>
 					<tr>
@@ -92,6 +101,17 @@ $total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 			</table>
 		<?php endif; ?>
 
+		<p class="alm-other-outbound-count">
+			<?php
+			printf(
+				/* translators: 1: label "Other Outbound Links", 2: count */
+				esc_html__( '%1$s: %2$d -- not shown individually; these are internal navigation, social/embed links, and other content that will never be an affiliate opportunity.', 'affiliate-link-manager' ),
+				esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_UNCLASSIFIED, true ) ),
+				(int) $status_summary[ ALM_Install::STATUS_UNCLASSIFIED ]
+			);
+			?>
+		</p>
+
 		<p>
 			<button type="button" class="button button-primary" id="alm-run-scan"><?php esc_html_e( 'Run Scan', 'affiliate-link-manager' ); ?></button>
 			<span id="alm-scan-progress" class="alm-scan-progress" hidden></span>
@@ -102,7 +122,7 @@ $total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 		<div class="alm-card">
 			<div class="alm-card-header">
 				<h2><?php esc_html_e( 'Needs attention', 'affiliate-link-manager' ); ?></h2>
-				<p class="alm-card-lede"><?php esc_html_e( 'Likely affiliate-link opportunities, and links no longer found on the last scan -- not the full unclassified pile, which is mostly navigation and social noise.', 'affiliate-link-manager' ); ?></p>
+				<p class="alm-card-lede"><?php esc_html_e( 'Likely affiliate-link opportunities, and links no longer found on the last scan -- not the full Other Outbound Links pile, which is mostly navigation and social noise.', 'affiliate-link-manager' ); ?></p>
 			</div>
 
 			<table class="alm-provider-breakdown">
@@ -111,7 +131,7 @@ $total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 						<tr>
 							<td>
 								<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_CONVERTIBLE ) ) ); ?>">
-									<span class="alm-badge alm-badge-status-convertible"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_CONVERTIBLE ) ); ?></span>
+									<span class="alm-badge alm-badge-status-convertible"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_CONVERTIBLE, true ) ); ?></span>
 								</a>
 							</td>
 							<td><?php echo esc_html( $needs_attention[ ALM_Install::STATUS_CONVERTIBLE ] ); ?></td>
@@ -135,7 +155,7 @@ $total     = array_sum( wp_list_pluck( $stats, 'count' ) );
 	<div class="alm-card">
 		<div class="alm-card-header">
 			<h2><?php esc_html_e( 'Domain content check', 'affiliate-link-manager' ); ?></h2>
-			<p class="alm-card-lede"><?php esc_html_e( 'Fetches one real page per candidate domain and looks for actual e-commerce signals (product schema, shop-platform fingerprints) instead of guessing from the domain name. Confirmed non-shops move back to Unclassified automatically -- this is what keeps the Candidates list accurate without anyone maintaining a list of known sites by hand.', 'affiliate-link-manager' ); ?></p>
+			<p class="alm-card-lede"><?php esc_html_e( 'Fetches one real page per candidate domain and looks for actual e-commerce signals (product schema, shop-platform fingerprints) instead of guessing from the domain name. Confirmed non-shops move back to Other Outbound Links automatically -- this is what keeps the Candidate Affiliate Links list accurate without anyone maintaining a list of known sites by hand.', 'affiliate-link-manager' ); ?></p>
 		</div>
 
 		<p class="alm-total-count">

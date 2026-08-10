@@ -109,34 +109,66 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
-	 * Single source of truth for status display text -- used by both
-	 * get_views() (the tab bar) and column_status() (the per-row badge),
-	 * so the two can never drift out of sync. STATUS_CONVERTIBLE reads
-	 * as "Candidates" here: it's a link ALM_Candidate_Classifier decided
-	 * looks like a real affiliate-link opportunity, not literally
-	 * "convertible" in the UI sense (nothing converts it automatically).
+	 * Single source of truth for status display text -- used by
+	 * get_views() (the tab bar), column_status() (the per-row badge),
+	 * and the Dashboard, so none of them can drift out of sync on
+	 * wording. Two forms of the same mapping, not two separate ones:
+	 * $long is for section/tab-level text ("Affiliate Links",
+	 * "Candidate Affiliate Links" -- the three-tier framing the user
+	 * asked for), $short is for the per-row status badge, where the
+	 * long form would wrap awkwardly next to the other (short) badges
+	 * in that same row.
+	 *
+	 * STATUS_CONVERTIBLE reads as "Candidate(s)" here, not literally
+	 * "convertible" in the UI sense: it's a link ALM_Candidate_Classifier
+	 * decided looks like a real affiliate-link opportunity, nothing
+	 * converts it automatically.
 	 *
 	 * @param string $status
+	 * @param bool   $long
 	 * @return string
 	 */
-	public static function status_label( $status ) {
+	public static function status_label( $status, $long = false ) {
 		$labels = array(
-			ALM_Install::STATUS_ACTIVE       => __( 'Active', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_CONVERTIBLE  => __( 'Candidate', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_UNCLASSIFIED => __( 'Unclassified', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_STALE        => __( 'Stale', 'affiliate-link-manager' ),
-			ALM_Install::STATUS_IGNORED      => __( 'Ignored', 'affiliate-link-manager' ),
+			ALM_Install::STATUS_ACTIVE       => array(
+				'short' => __( 'Affiliate Link', 'affiliate-link-manager' ),
+				'long'  => __( 'Affiliate Links', 'affiliate-link-manager' ),
+			),
+			ALM_Install::STATUS_CONVERTIBLE  => array(
+				'short' => __( 'Candidate', 'affiliate-link-manager' ),
+				'long'  => __( 'Candidate Affiliate Links', 'affiliate-link-manager' ),
+			),
+			ALM_Install::STATUS_UNCLASSIFIED => array(
+				'short' => __( 'Other Outbound Link', 'affiliate-link-manager' ),
+				'long'  => __( 'Other Outbound Links', 'affiliate-link-manager' ),
+			),
+			ALM_Install::STATUS_STALE        => array(
+				'short' => __( 'Stale', 'affiliate-link-manager' ),
+				'long'  => __( 'Stale', 'affiliate-link-manager' ),
+			),
+			ALM_Install::STATUS_IGNORED      => array(
+				'short' => __( 'Ignored', 'affiliate-link-manager' ),
+				'long'  => __( 'Ignored', 'affiliate-link-manager' ),
+			),
 		);
 
-		return isset( $labels[ $status ] ) ? $labels[ $status ] : ucfirst( $status );
+		if ( ! isset( $labels[ $status ] ) ) {
+			return ucfirst( $status );
+		}
+
+		return $labels[ $status ][ $long ? 'long' : 'short' ];
 	}
 
 	/**
-	 * Status view-tabs above the table ("All | Active | Stale | ...",
-	 * same pattern as Posts' "All | Published | Drafts"). Empty
-	 * statuses are hidden rather than shown as a permanent "(0)" --
-	 * keeps the tab bar from accumulating networks/statuses nobody's
-	 * ever actually seen.
+	 * Status view-tabs above the table ("All | Candidate Affiliate
+	 * Links | Affiliate Links | ...", same pattern as Posts' "All |
+	 * Published | Drafts"). Other Outbound Links (STATUS_UNCLASSIFIED)
+	 * deliberately never gets a tab here at all, regardless of count --
+	 * it's noise (internal nav, social icons, reference sites), not
+	 * something to browse; the Dashboard Overview is the one place its
+	 * count is shown. Every other empty status is hidden rather than
+	 * shown as a permanent "(0)", keeping the tab bar from accumulating
+	 * statuses nobody's ever actually seen.
 	 *
 	 * @return array<string,string>
 	 */
@@ -147,17 +179,23 @@ class ALM_Links_List_Table extends WP_List_Table {
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
 		$counts    = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
 		$by_status = wp_list_pluck( $counts, 'total', 'status' );
-		$total     = array_sum( $by_status );
+		// "All" here means all three visible tiers, not literally every
+		// row -- Other Outbound Links is excluded from this sum the same
+		// way it's excluded from the "All" tab's own query in
+		// prepare_items(), so the count next to "All" always matches
+		// what that tab actually shows.
+		$visible_statuses = array( ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_ACTIVE, ALM_Install::STATUS_STALE, ALM_Install::STATUS_IGNORED );
+		$total            = array_sum( array_intersect_key( $by_status, array_flip( $visible_statuses ) ) );
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter selection, not a state-changing action.
 		$current  = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '';
 		$base_url = remove_query_arg( array( 'status', 'paged' ) );
 
 		$labels = array( '' => __( 'All', 'affiliate-link-manager' ) );
-		foreach ( array( ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_ACTIVE, ALM_Install::STATUS_UNCLASSIFIED, ALM_Install::STATUS_STALE, ALM_Install::STATUS_IGNORED ) as $status ) {
+		foreach ( $visible_statuses as $status ) {
 			// Candidates listed first -- it's the tab most worth an
 			// editor's attention, not an alphabetical/schema accident.
-			$labels[ $status ] = self::status_label( $status );
+			$labels[ $status ] = self::status_label( $status, true );
 		}
 
 		$views = array();
@@ -241,6 +279,15 @@ class ALM_Links_List_Table extends WP_List_Table {
 		if ( ! empty( $_GET['status'] ) ) {
 			$where[]  = 'status = %s';
 			$params[] = sanitize_key( wp_unslash( $_GET['status'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		} else {
+			// "All" (no explicit status param) means all three visible
+			// tiers -- Other Outbound Links is deliberately never part of
+			// the default/browsable view, only a summary count on the
+			// Dashboard. A direct ?status=unclassified link (e.g. an old
+			// bookmark) still works via the branch above; this exclusion
+			// only applies to the unfiltered default.
+			$where[]  = 'status != %s';
+			$params[] = ALM_Install::STATUS_UNCLASSIFIED;
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended

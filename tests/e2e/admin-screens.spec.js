@@ -84,19 +84,35 @@ test.describe('Affiliate Links admin screens', () => {
 
 		await page.getByRole('button', { name: 'Run Scan' }).click();
 		await expect(page.getByText(/Last scanned/)).toBeVisible({ timeout: 30000 });
-		await expect(page.getByText(/\d+ links? found/)).toBeVisible();
+		// The three-tier headline: the fixture link's URL doesn't match
+		// any known provider, but it also isn't noise (not internal, not
+		// social/reference, not an image) -- ALM_Candidate_Classifier
+		// surfaces it as a real Candidate Affiliate Link, not an Other
+		// Outbound Link.
+		const overview = page.locator('.alm-card', { hasText: 'Overview' });
+		await expect(overview.getByText('Candidate Affiliate Links')).toBeVisible();
 		// First scan ever: both fixture links are new, nothing is stale yet.
 		await expect(page.getByText('2 new, 0 now stale.')).toBeVisible();
 
-		// The fixture link's URL doesn't match any known provider, but it
-		// also isn't noise (not internal, not social/reference, not an
-		// image) -- ALM_Candidate_Classifier surfaces it as a real
-		// candidate, and that badge should drill into Links pre-filtered
-		// to it.
 		const needsAttention = page.locator('.alm-card', { hasText: 'Needs attention' });
-		await expect(needsAttention.getByText('Candidate')).toBeVisible();
-		await needsAttention.getByText('Candidate').click();
+		await expect(needsAttention.getByText('Candidate Affiliate Links')).toBeVisible();
+		await needsAttention.getByText('Candidate Affiliate Links').click();
 		await expect(page).toHaveURL(/status=convertible/);
+	});
+
+	test('Other Outbound Links never appears as a tab and is excluded from "All"', async ({ page }) => {
+		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
+
+		// Scoped to the view-tabs bar specifically (WP core's own
+		// .subsubsub class) -- a bare page-wide search would also match
+		// the sidebar's top-level "Affiliate Links" menu link.
+		const tabs = page.locator('.subsubsub');
+
+		// The noise-fixture link (a social-platform URL) is real
+		// unclassified data on this install, proving this isn't just an
+		// empty-state pass -- it must still never get a tab of its own.
+		await expect(tabs.getByText('Other Outbound', { exact: false })).toHaveCount(0);
+		await expect(tabs.getByText('Candidate Affiliate Links', { exact: false })).toBeVisible();
 	});
 
 	test('Check Domains completes and does not reclassify an unreachable domain', async ({ page }) => {

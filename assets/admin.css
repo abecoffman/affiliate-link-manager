@@ -41,6 +41,33 @@
 	padding: 4px 12px 4px 0;
 }
 
+/* The Dashboard's headline two rows (Affiliate Links / Candidate
+   Affiliate Links) -- larger than the per-network sub-breakdown below
+   it, same visual weight .alm-total-count used to carry as the single
+   "X links found" line before the three-tier restructure. */
+.alm-status-headline .alm-badge {
+	font-size: 14px;
+	padding: 4px 12px;
+}
+
+/* The per-network breakdown (ShopMy, RewardStyle) sits underneath the
+   Affiliate Links headline as supporting detail, not another
+   headline -- indented and slightly smaller says "detail", not
+   "another top-level number" competing for the same attention. */
+.alm-provider-sub-breakdown {
+	margin-left: 16px;
+	font-size: 13px;
+}
+
+/* Other Outbound Links is deliberately just a summary number, never a
+   badge or a link -- styled as a quiet footnote, not another headline
+   competing with Affiliate Links / Candidate Affiliate Links above. */
+.alm-other-outbound-count {
+	color: #646970;
+	font-size: 13px;
+	margin: 4px 0 16px;
+}
+
 .alm-badge {
 	display: inline-block;
 	padding: 2px 10px;

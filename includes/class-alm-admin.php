@@ -262,6 +262,7 @@ class ALM_Admin {
 
 	public function render_dashboard() {
 		$stats           = $this->get_provider_stats();
+		$status_summary  = $this->get_status_summary();
 		$needs_attention = $this->get_needs_attention_counts();
 		$scan_delta      = get_option( 'alm_last_scan_delta', array() );
 		$domain_check    = $this->get_domain_check_stats();
@@ -290,6 +291,15 @@ class ALM_Admin {
 	}
 
 	/**
+	 * The real-network sub-breakdown shown under the "Affiliate Links"
+	 * headline on the Dashboard (ShopMy X, RewardStyle Y) -- excludes
+	 * the 'unclassified' provider bucket on purpose. That bucket mixes
+	 * Candidate Affiliate Links and Other Outbound Links together and
+	 * belongs to the three-tier status summary (get_status_summary()),
+	 * not a per-network breakdown; a real provider only ever produces
+	 * status=active links (see ALM_Scanner::upsert_link()), so this
+	 * list is naturally just ShopMy/RewardStyle/etc., never noise.
+	 *
 	 * @return array<string,array{label:string,count:int}>
 	 */
 	private function get_provider_stats() {
@@ -297,7 +307,7 @@ class ALM_Admin {
 		$table = ALM_Install::table_name();
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$rows = $wpdb->get_results( "SELECT provider, COUNT(*) as total FROM {$table} GROUP BY provider", ARRAY_A );
+		$rows = $wpdb->get_results( "SELECT provider, COUNT(*) as total FROM {$table} WHERE provider != 'unclassified' GROUP BY provider", ARRAY_A );
 
 		$stats = array();
 		foreach ( (array) $rows as $row ) {
@@ -311,6 +321,30 @@ class ALM_Admin {
 		}
 
 		return $stats;
+	}
+
+	/**
+	 * The three-tier headline counts the Dashboard Overview is built
+	 * around: Affiliate Links (status=active), Candidate Affiliate
+	 * Links (status=convertible), and Other Outbound Links
+	 * (status=unclassified) -- the last of which is deliberately never
+	 * shown anywhere else as more than this one summary number.
+	 *
+	 * @return array<string,int>
+	 */
+	private function get_status_summary() {
+		global $wpdb;
+		$table = ALM_Install::table_name();
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
+		$rows      = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
+		$by_status = wp_list_pluck( $rows, 'total', 'status' );
+
+		return array(
+			ALM_Install::STATUS_ACTIVE       => isset( $by_status[ ALM_Install::STATUS_ACTIVE ] ) ? (int) $by_status[ ALM_Install::STATUS_ACTIVE ] : 0,
+			ALM_Install::STATUS_CONVERTIBLE  => isset( $by_status[ ALM_Install::STATUS_CONVERTIBLE ] ) ? (int) $by_status[ ALM_Install::STATUS_CONVERTIBLE ] : 0,
+			ALM_Install::STATUS_UNCLASSIFIED => isset( $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] ) ? (int) $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] : 0,
+		);
 	}
 
 	/**

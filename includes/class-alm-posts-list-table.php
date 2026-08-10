@@ -133,8 +133,13 @@ class ALM_Posts_List_Table extends WP_List_Table {
 		global $wpdb;
 		$table = ALM_Install::table_name();
 
-		$where  = array( '1=1' );
-		$params = array();
+		// Other Outbound Links (status=unclassified) never counts toward
+		// a post's presence or total here, same as it's excluded from
+		// the Links screen's default "All" view -- a post whose only
+		// tracked links are internal nav/social noise has nothing an
+		// editor needs to see in this rollup at all.
+		$where  = array( 'status != %s' );
+		$params = array( ALM_Install::STATUS_UNCLASSIFIED );
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter, not a state-changing action.
 		if ( ! empty( $_GET['provider'] ) ) {
@@ -206,9 +211,15 @@ class ALM_Posts_List_Table extends WP_List_Table {
 		$table        = ALM_Install::table_name();
 		$placeholders = implode( ',', array_fill( 0, count( $post_ids ), '%d' ) );
 
+		// Other Outbound Links excluded here too, same reasoning as
+		// prepare_items() -- without this, a post with e.g. 50
+		// other-outbound + 3 candidate links would still show a "50
+		// Unclassified" badge in the breakdown, exactly the clutter this
+		// screen exists to avoid.
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed run of %d tokens, not user input; real values bound via prepare() below.
-		$sql  = "SELECT post_id, provider, status, COUNT(*) as total FROM {$table} WHERE post_id IN ({$placeholders}) GROUP BY post_id, provider, status";
-		$rows = $wpdb->get_results( $wpdb->prepare( $sql, $post_ids ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$sql    = "SELECT post_id, provider, status, COUNT(*) as total FROM {$table} WHERE post_id IN ({$placeholders}) AND status != %s GROUP BY post_id, provider, status";
+		$params = array_merge( $post_ids, array( ALM_Install::STATUS_UNCLASSIFIED ) );
+		$rows   = $wpdb->get_results( $wpdb->prepare( $sql, $params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
 		foreach ( (array) $rows as $row ) {
 			$post_id = (int) $row['post_id'];
