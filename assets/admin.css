@@ -202,6 +202,16 @@ table.alm_posts .column-breakdown {
 	z-index: 100000;
 }
 
+/* The [hidden] boolean attribute's own display:none is a *browser
+   default* (UA stylesheet), which any author rule -- including our own
+   .alm-modal-overlay { display: flex } above -- always wins over,
+   equal selector specificity or not. Without this, the modal rendered
+   open on every single page load, not just when JS actually opened
+   it: real bug, found live on honestlywtf, not just a theoretical one. */
+.alm-modal-overlay[hidden] {
+	display: none;
+}
+
 .alm-modal {
 	background: #fff;
 	border-radius: 4px;
