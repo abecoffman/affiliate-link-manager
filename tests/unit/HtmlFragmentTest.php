@@ -138,22 +138,61 @@ class HtmlFragmentTest extends TestCase {
 	}
 
 	/**
-	 * Deliberately NOT truncated -- the point of showing context at all
-	 * is to let an admin recognize the real sentence the link lives in,
-	 * not an abbreviated approximation of it (a real usability
-	 * complaint on an earlier version that did truncate to ~80 chars).
-	 * The nearest-block-ancestor walk is what keeps this bounded to one
-	 * paragraph/list-item/etc. in ordinary content, not a length cap.
+	 * No character-count cap: a long run of text with no sentence
+	 * delimiter in it at all (an earlier version truncated to ~80
+	 * chars regardless -- a real usability complaint) is returned in
+	 * full, since there's no sentence boundary to stop at.
 	 */
-	public function test_get_anchor_context_does_not_truncate_a_long_surrounding_sentence() {
+	public function test_get_anchor_context_does_not_impose_a_length_cap_absent_a_sentence_boundary() {
 		$subject = new HtmlFragmentTestSubject();
-		$long    = str_repeat( 'a very long sentence of prose ', 10 );
+		$long    = str_repeat( 'a very long run of prose with no punctuation ', 10 );
 		$html    = '<p>' . $long . '<a href="https://a.example.com/">the link</a>' . $long . '</p>';
 
 		$context = $subject->context( $html, 0 );
 
 		$this->assertSame( trim( $long ), $context['before'] );
 		$this->assertSame( trim( $long ), $context['after'] );
+	}
+
+	/**
+	 * The real fix this exists for: context scoped to *one sentence*,
+	 * not the whole paragraph -- reproduces the exact honestlywtf
+	 * example that prompted it (a multi-sentence Beaver Builder rich-
+	 * text block, where the first version returned all three
+	 * sentences instead of just the one the link is actually in).
+	 */
+	public function test_get_anchor_context_scopes_to_a_single_sentence_not_the_whole_paragraph() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<p>We could not be more excited to bring this back! Ariel and I reimagined the palette with fresh colors. '
+			. 'If you are in town between April 18-20, come hang with us all weekend at Birkenstock&#8217;s '
+			. '<a href="https://www.birkenstock.com/us/magazine/boston-store/">Newbury</a> and Chestnut Hill locations and get hands-on. '
+			. 'It is equal parts craft and community. We can not wait to see what you make!</p>';
+
+		$context = $subject->context( $html, 0 );
+
+		$this->assertSame( "If you are in town between April 18-20, come hang with us all weekend at Birkenstock’s", $context['before'] );
+		$this->assertSame( 'Newbury', $context['text'] );
+		$this->assertSame( 'and Chestnut Hill locations and get hands-on.', $context['after'] );
+	}
+
+	/**
+	 * The other real fix: other inline markup in the same sentence --
+	 * another link, bold text -- must survive as real markup, not get
+	 * flattened to plain text. Any surviving link is forced to open in
+	 * a new tab: a link inside a *preview* must never navigate the
+	 * admin away from the modal it's shown in.
+	 */
+	public function test_get_anchor_context_preserves_other_inline_markup_and_forces_links_to_a_new_tab() {
+		$subject = new HtmlFragmentTestSubject();
+		$html = '<p>As seen in <a href="https://vogue.example.com/">Vogue</a>, our <strong>new collection</strong> features the '
+			. '<a href="https://a.example.com/">Birkenstocks</a> everyone is talking about.</p>';
+
+		$context = $subject->context( $html, 1 );
+
+		$this->assertStringContainsString( '<a', $context['before'], 'The Vogue link must survive as real markup.' );
+		$this->assertStringContainsString( 'href="https://vogue.example.com/"', $context['before'] );
+		$this->assertStringContainsString( 'target="_blank"', $context['before'], 'A link inside a preview must never navigate away from the modal.' );
+		$this->assertStringContainsString( '<strong>new collection</strong>', $context['before'] );
 	}
 
 	/**

@@ -294,23 +294,38 @@
 			providerDisplay.textContent = originalProviderLabel;
 			urlInput.value = originalUrl;
 
-			// Mirrors how the link actually reads in the post -- the
-			// anchor's own text set off from its surrounding context,
-			// not just the isolated text on its own. before/after can
-			// legitimately be empty (a link with no real surrounding
-			// prose, or an adapter that doesn't implement get_context()).
+			// Mirrors how the link actually reads in the post -- real
+			// markup (other links, bold/italic), not flattened to plain
+			// text, set off from the anchor's own text. before/after
+			// are already sanitized server-side against a small allowed-
+			// tag whitelist (ALM_Html_Fragment_Trait::get_anchor_context(),
+			// which also forces any surviving link to target="_blank" --
+			// a link inside this preview must never navigate away from
+			// the modal) before ever reaching here, so setting innerHTML
+			// from them is safe. Both can legitimately be empty (a link
+			// with no real surrounding prose, or an adapter that doesn't
+			// implement get_context()).
 			var before = link.getAttribute( 'data-context-before' ) || '';
 			var after = link.getAttribute( 'data-context-after' ) || '';
 			var anchor = link.getAttribute( 'data-anchor' ) || '';
-			contextField.textContent = '';
+			contextField.innerHTML = '';
+
 			if ( before ) {
-				contextField.appendChild( document.createTextNode( before + ' ' ) );
+				var beforeSpan = document.createElement( 'span' );
+				beforeSpan.innerHTML = before;
+				contextField.appendChild( beforeSpan );
+				contextField.appendChild( document.createTextNode( ' ' ) );
 			}
+
 			var mark = document.createElement( 'mark' );
 			mark.textContent = anchor;
 			contextField.appendChild( mark );
+
 			if ( after ) {
-				contextField.appendChild( document.createTextNode( ' ' + after ) );
+				contextField.appendChild( document.createTextNode( ' ' ) );
+				var afterSpan = document.createElement( 'span' );
+				afterSpan.innerHTML = after;
+				contextField.appendChild( afterSpan );
 			}
 
 			errorText.hidden = true;

@@ -35,6 +35,7 @@ abstract class TestCase extends PolyfillTestCase {
 		Functions\when( 'esc_html' )->returnArg( 1 );
 		Functions\when( 'esc_attr' )->returnArg( 1 );
 		Functions\when( 'esc_url' )->returnArg( 1 );
+		Functions\when( 'wp_kses' )->returnArg( 1 );
 		Functions\when( 'wp_parse_url' )->alias( 'parse_url' );
 	}
 
