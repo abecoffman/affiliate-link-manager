@@ -137,20 +137,40 @@ class HtmlFragmentTest extends TestCase {
 		$this->assertNull( $subject->context( '', 0 ) );
 	}
 
-	public function test_get_anchor_context_truncates_long_surrounding_text() {
+	/**
+	 * Deliberately NOT truncated -- the point of showing context at all
+	 * is to let an admin recognize the real sentence the link lives in,
+	 * not an abbreviated approximation of it (a real usability
+	 * complaint on an earlier version that did truncate to ~80 chars).
+	 * The nearest-block-ancestor walk is what keeps this bounded to one
+	 * paragraph/list-item/etc. in ordinary content, not a length cap.
+	 */
+	public function test_get_anchor_context_does_not_truncate_a_long_surrounding_sentence() {
 		$subject = new HtmlFragmentTestSubject();
 		$long    = str_repeat( 'a very long sentence of prose ', 10 );
 		$html    = '<p>' . $long . '<a href="https://a.example.com/">the link</a>' . $long . '</p>';
 
 		$context = $subject->context( $html, 0 );
 
-		// 80 chars plus the multi-byte "…" marker (3 bytes in UTF-8) --
-		// strlen() is byte length, not character count.
-		$max_bytes = 80 + strlen( '…' );
-		$this->assertLessThanOrEqual( $max_bytes, strlen( $context['before'] ), 'before text should be truncated to a short snippet.' );
-		$this->assertStringStartsWith( '…', $context['before'] );
-		$this->assertLessThanOrEqual( $max_bytes, strlen( $context['after'] ) );
-		$this->assertStringEndsWith( '…', $context['after'] );
+		$this->assertSame( trim( $long ), $context['before'] );
+		$this->assertSame( trim( $long ), $context['after'] );
+	}
+
+	/**
+	 * Confirms the bound really is "the nearest block ancestor," not
+	 * the whole post -- text in a sibling paragraph must never bleed
+	 * into this link's own context.
+	 */
+	public function test_get_anchor_context_stays_within_the_anchors_own_paragraph() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<p>Earlier, unrelated paragraph.</p>'
+			. '<p>Wearing my favorite <a href="https://a.example.com/">Birkenstocks</a> today.</p>'
+			. '<p>A later, also unrelated paragraph.</p>';
+
+		$context = $subject->context( $html, 0 );
+
+		$this->assertSame( 'Wearing my favorite', $context['before'] );
+		$this->assertSame( 'today.', $context['after'] );
 	}
 
 	public function test_never_leaks_the_synthetic_wrapper_div() {

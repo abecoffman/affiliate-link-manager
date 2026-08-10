@@ -574,9 +574,10 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$provider_obj         = $this->providers->get_provider( $item['provider'] );
 		$context              = $this->get_link_context( $item );
 		$actions['edit_link'] = sprintf(
-			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-url="%3$s" data-anchor="%4$s" data-provider="%5$s" data-provider-label="%6$s" data-context-before="%7$s" data-context-after="%8$s">%9$s</a>',
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-url="%4$s" data-anchor="%5$s" data-provider="%6$s" data-provider-label="%7$s" data-context-before="%8$s" data-context-after="%9$s">%10$s</a>',
 			(int) $item['id'],
 			esc_attr( get_the_title( $item['post_id'] ) ),
+			esc_attr( $edit_link ? $edit_link : '' ),
 			esc_attr( $item['url'] ),
 			esc_attr( $item['anchor_text'] ),
 			esc_attr( $item['provider'] ),

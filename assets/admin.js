@@ -278,7 +278,19 @@
 			originalUrl = link.getAttribute( 'data-url' );
 			matchedProviderId = originalProviderId;
 
-			postField.textContent = link.getAttribute( 'data-post-title' );
+			postField.textContent = '';
+			var postEditUrl = link.getAttribute( 'data-post-edit-url' );
+			if ( postEditUrl ) {
+				var postLink = document.createElement( 'a' );
+				postLink.href = postEditUrl;
+				postLink.target = '_blank';
+				postLink.rel = 'noopener noreferrer';
+				postLink.textContent = link.getAttribute( 'data-post-title' );
+				postField.appendChild( postLink );
+			} else {
+				postField.textContent = link.getAttribute( 'data-post-title' );
+			}
+
 			providerDisplay.textContent = originalProviderLabel;
 			urlInput.value = originalUrl;
 

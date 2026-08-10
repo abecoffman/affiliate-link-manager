@@ -127,27 +127,18 @@ trait ALM_Html_Fragment_Trait {
 			);
 		}
 
+		// Deliberately not truncated -- an earlier version cut this down
+		// to ~80 chars per side, but the point of showing this at all is
+		// to let an admin actually recognize the sentence the link lives
+		// in ("pull directly from post," not an abbreviated approximation
+		// of it). The nearest-block-ancestor walk above already keeps
+		// this bounded to one paragraph/list-item/etc. in ordinary
+		// content, not the whole post.
 		return array(
-			'before' => $this->truncate_context_edge( trim( substr( $full, 0, $pos ) ), 80, true ),
+			'before' => trim( substr( $full, 0, $pos ) ),
 			'text'   => $anchor_text,
-			'after'  => $this->truncate_context_edge( trim( substr( $full, $pos + strlen( $anchor_text ) ) ), 80, false ),
+			'after'  => trim( substr( $full, $pos + strlen( $anchor_text ) ) ),
 		);
-	}
-
-	/**
-	 * @param string $text
-	 * @param int    $max
-	 * @param bool   $from_end Truncate from the front (keep the tail,
-	 *                         for "before" text) or from the back
-	 *                         (keep the head, for "after" text).
-	 * @return string
-	 */
-	private function truncate_context_edge( $text, $max, $from_end ) {
-		if ( strlen( $text ) <= $max ) {
-			return $text;
-		}
-
-		return $from_end ? '…' . substr( $text, -$max ) : substr( $text, 0, $max ) . '…';
 	}
 
 	/**
