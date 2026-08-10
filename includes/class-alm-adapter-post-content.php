@@ -73,4 +73,13 @@ class ALM_Adapter_Post_Content extends ALM_Content_Adapter {
 
 		return true;
 	}
+
+	public function get_context( $post_id, $location ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			return null;
+		}
+
+		return $this->get_anchor_context( $post->post_content, (int) $location );
+	}
 }

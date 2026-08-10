@@ -1,26 +1,23 @@
 <?php
 /**
- * Rewrites a single wp_alm_links row's URL and/or provider -- the
- * shared logic behind both the Links screen's single-row "Edit" modal
- * and its "Convert to [Provider]" bulk action, so the two never drift
- * out of sync on what "convert" actually does.
+ * Rewrites a single wp_alm_links row's URL and/or provider.
  *
- * Three distinct things can happen, chosen automatically by what was
- * actually submitted rather than three separate methods to keep
- * straight:
- * - An explicit replacement URL was submitted (differs from the row's
- *   own stored URL): write it verbatim, no wrap_url() involved. This
- *   is the *only* way to attach a link for a provider that can't build
- *   one itself (RewardStyle/LTK today) -- the admin generates the real
- *   tracked link on the network's own site and pastes the result in
- *   here.
- * - No explicit URL (or it matches what's already stored) and the
- *   target provider can_wrap(): call wrap_url() to build a new tracked
- *   URL from the current one.
- * - No explicit URL and the target provider can't wrap: a DB-only
- *   reclassify, content untouched.
+ * Two distinct entry points, for two distinct UIs:
+ * - save_url() -- the Links screen's row-level Edit modal. The admin
+ *   only ever edits a destination URL; the provider is always inferred
+ *   from it via ALM_Provider_Registry::match_url(), the same matching
+ *   logic the scanner itself uses -- never manually picked. This is
+ *   also the only way to attach a link for a provider that can't build
+ *   one itself (RewardStyle/LTK today): the admin generates the real
+ *   tracked link on the network's own site and pastes the result in.
+ * - convert() -- the "Convert to [Provider]" bulk action. A provider is
+ *   chosen explicitly (only ever a can_wrap()-capable, configured one,
+ *   see ALM_Links_List_Table::get_bulk_actions()) and wrap_url() builds
+ *   a new tracked URL from whatever's already there.
  *
- * Deliberately reuses ALM_Provider::wrap_url()/can_wrap() and
+ * Both funnel through the same private write_and_persist() so they can
+ * never drift on what "save" actually does. Deliberately reuses
+ * ALM_Provider::wrap_url()/can_wrap()/match_url() and
  * ALM_Content_Adapter::replace_link() exactly as already implemented
  * and tested -- no changes to either contract. See those classes'
  * docblocks for the guarantees this relies on (replace_link() verifies
@@ -52,22 +49,36 @@ class ALM_Link_Converter {
 	}
 
 	/**
-	 * @param array       $item        A full wp_alm_links row (ARRAY_A).
-	 * @param string      $provider_id Provider id to label the link with.
-	 * @param string|null $url         An explicit replacement URL (e.g.
-	 *                                 pasted in from the network's own
-	 *                                 dashboard). Null/unchanged means
-	 *                                 "use whatever's already there."
+	 * Saves an admin-provided URL verbatim and relabels the link with
+	 * whatever provider it actually matches -- never a manual choice.
+	 * A URL that doesn't match any registered network is a legitimate
+	 * outcome, not an error: the link is saved as given, classified
+	 * "unaffiliated" (the same fallback the scanner itself uses), not
+	 * silently promoted to a real Affiliate Link it isn't.
+	 *
+	 * @param array  $item A full wp_alm_links row (ARRAY_A).
+	 * @param string $url
 	 * @return true|WP_Error
 	 */
-	public function convert( array $item, $provider_id, $url = null ) {
+	public function save_url( array $item, $url ) {
+		$provider = $this->providers->match_url( $url );
+
+		return $this->write_and_persist( $item, $url, $provider->get_id() );
+	}
+
+	/**
+	 * Wraps this link's existing URL for $provider_id (or, for a
+	 * provider that can't wrap, just relabels the record) -- the bulk
+	 * "Convert to [Provider]" action.
+	 *
+	 * @param array  $item        A full wp_alm_links row (ARRAY_A).
+	 * @param string $provider_id Target provider id.
+	 * @return true|WP_Error
+	 */
+	public function convert( array $item, $provider_id ) {
 		$provider = $this->providers->get_provider( $provider_id );
 		if ( ! $provider ) {
 			return new WP_Error( 'alm_unknown_provider', __( 'Unknown provider.', 'affiliate-link-manager' ) );
-		}
-
-		if ( null !== $url && $url !== $item['url'] ) {
-			return $this->write_and_persist( $item, $url, $provider_id );
 		}
 
 		if ( ! $provider->can_wrap() ) {
@@ -84,9 +95,7 @@ class ALM_Link_Converter {
 
 	/**
 	 * DB-only status/provider change -- the target provider can't build
-	 * (RewardStyle) or wasn't given (Generic) a URL, so there's nothing
-	 * to write into the post. Exactly the existing classify-only
-	 * behavior, just triggered by an admin instead of the scanner.
+	 * a URL (RewardStyle), so there's nothing to write into the post.
 	 *
 	 * @param array  $item
 	 * @param string $provider_id
@@ -112,7 +121,11 @@ class ALM_Link_Converter {
 
 	/**
 	 * Writes $new_url into the real post content via this link's own
-	 * content adapter, then updates the tracked record to match.
+	 * content adapter, then updates the tracked record to match. Status
+	 * follows the resolved provider: a real, recognized network means a
+	 * real Affiliate Link; the "unclassified" fallback (no network
+	 * recognized this URL) keeps the link in Other Outbound, never
+	 * mislabeled as active just because an admin saved it.
 	 *
 	 * @param array  $item
 	 * @param string $new_url
@@ -130,6 +143,8 @@ class ALM_Link_Converter {
 			return $result;
 		}
 
+		$status = ( ALM_Install::STATUS_UNCLASSIFIED === $provider_id ) ? ALM_Install::STATUS_UNCLASSIFIED : ALM_Install::STATUS_ACTIVE;
+
 		global $wpdb;
 		$table   = ALM_Install::table_name();
 		$updated = $wpdb->update(
@@ -137,7 +152,7 @@ class ALM_Link_Converter {
 			array(
 				'url'      => $new_url,
 				'provider' => $provider_id,
-				'status'   => ALM_Install::STATUS_ACTIVE,
+				'status'   => $status,
 			),
 			array( 'id' => (int) $item['id'] ),
 			array( '%s', '%s', '%s' ),

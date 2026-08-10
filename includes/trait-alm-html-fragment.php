@@ -71,6 +71,86 @@ trait ALM_Html_Fragment_Trait {
 	}
 
 	/**
+	 * A short "as it reads in the post" snippet around one anchor --
+	 * the anchor's own text plus a little plain-text context on each
+	 * side, for a link editor UI to show what's actually being changed
+	 * rather than just an isolated URL. Best-effort: walks up to the
+	 * nearest block-level ancestor (a raw <a> with no meaningful
+	 * surrounding text, e.g. one that *is* the entire content of its
+	 * <p>, still returns empty before/after rather than failing) and
+	 * locates the anchor's own text within that block's plain text --
+	 * good enough for a UI hint, not meant to be exact for content
+	 * where the same text legitimately appears more than once nearby.
+	 *
+	 * @param string $html
+	 * @param int    $index
+	 * @return array{before:string,text:string,after:string}|null
+	 */
+	private function get_anchor_context( $html, $index ) {
+		if ( '' === trim( (string) $html ) ) {
+			return null;
+		}
+
+		$doc     = $this->load_html_fragment( $html );
+		$anchors = $this->get_fragment_anchors( $doc );
+
+		if ( $index < 0 || $index >= $anchors->length ) {
+			return null;
+		}
+
+		$anchor = $anchors->item( $index );
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- DOMNode's own built-in PHP property.
+		$anchor_text = trim( $anchor->textContent );
+
+		$block_tags = array( 'p', 'li', 'td', 'th', 'div', 'blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'figcaption' );
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- DOMNode's own built-in PHP property, not a WordPress API.
+		$container = $anchor->parentNode;
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- DOMElement's own built-in PHP property.
+		while ( $container instanceof DOMElement && ! in_array( strtolower( $container->tagName ), $block_tags, true ) && $container->parentNode ) {
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+			$container = $container->parentNode;
+		}
+		if ( ! ( $container instanceof DOMElement ) ) {
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+			$container = $anchor->parentNode;
+		}
+
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+		$full = trim( preg_replace( '/\s+/', ' ', $container->textContent ) );
+		$pos  = '' !== $anchor_text ? strpos( $full, $anchor_text ) : false;
+
+		if ( false === $pos ) {
+			return array(
+				'before' => '',
+				'text'   => $anchor_text,
+				'after'  => '',
+			);
+		}
+
+		return array(
+			'before' => $this->truncate_context_edge( trim( substr( $full, 0, $pos ) ), 80, true ),
+			'text'   => $anchor_text,
+			'after'  => $this->truncate_context_edge( trim( substr( $full, $pos + strlen( $anchor_text ) ) ), 80, false ),
+		);
+	}
+
+	/**
+	 * @param string $text
+	 * @param int    $max
+	 * @param bool   $from_end Truncate from the front (keep the tail,
+	 *                         for "before" text) or from the back
+	 *                         (keep the head, for "after" text).
+	 * @return string
+	 */
+	private function truncate_context_edge( $text, $max, $from_end ) {
+		if ( strlen( $text ) <= $max ) {
+			return $text;
+		}
+
+		return $from_end ? '…' . substr( $text, -$max ) : substr( $text, 0, $max ) . '…';
+	}
+
+	/**
 	 * Parse an HTML fragment safely (preserving UTF-8, no full
 	 * <html><body> wrapper needed) into a DOMDocument.
 	 *

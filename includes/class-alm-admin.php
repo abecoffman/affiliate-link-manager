@@ -13,13 +13,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class ALM_Admin {
 
-	const AJAX_SCAN_ACTION         = 'alm_scan_batch';
-	const AJAX_DOMAIN_CHECK_ACTION = 'alm_check_domains_batch';
-	const AJAX_EDIT_LINK_ACTION    = 'alm_edit_link';
-	const NONCE_ACTION             = 'alm_admin';
-	const SETTINGS_NONCE           = 'alm_settings';
-	const PROVIDERS_NONCE          = 'alm_providers';
-	const CAPABILITY               = 'manage_options';
+	const AJAX_SCAN_ACTION           = 'alm_scan_batch';
+	const AJAX_DOMAIN_CHECK_ACTION   = 'alm_check_domains_batch';
+	const AJAX_EDIT_LINK_ACTION      = 'alm_edit_link';
+	const AJAX_MATCH_PROVIDER_ACTION = 'alm_match_provider';
+	const NONCE_ACTION               = 'alm_admin';
+	const SETTINGS_NONCE             = 'alm_settings';
+	const PROVIDERS_NONCE            = 'alm_providers';
+	const CAPABILITY                 = 'manage_options';
 
 	const MENU_SLUG = 'affiliate-links';
 
@@ -62,6 +63,7 @@ class ALM_Admin {
 		add_action( 'wp_ajax_' . self::AJAX_SCAN_ACTION, array( $this, 'handle_scan_batch' ) );
 		add_action( 'wp_ajax_' . self::AJAX_DOMAIN_CHECK_ACTION, array( $this, 'handle_domain_check_batch' ) );
 		add_action( 'wp_ajax_' . self::AJAX_EDIT_LINK_ACTION, array( $this, 'handle_edit_link' ) );
+		add_action( 'wp_ajax_' . self::AJAX_MATCH_PROVIDER_ACTION, array( $this, 'handle_match_provider' ) );
 		add_action( 'admin_init', array( $this, 'handle_settings_forms' ) );
 	}
 
@@ -146,20 +148,21 @@ class ALM_Admin {
 			'alm-admin',
 			'almAdmin',
 			array(
-				'ajaxUrl'           => admin_url( 'admin-ajax.php' ),
-				'action'            => self::AJAX_SCAN_ACTION,
-				'domainCheckAction' => self::AJAX_DOMAIN_CHECK_ACTION,
-				'editLinkAction'    => self::AJAX_EDIT_LINK_ACTION,
-				'nonce'             => wp_create_nonce( self::NONCE_ACTION ),
-				'total'             => $this->scanner->count_scannable_posts(),
-				'domainsTotal'      => $this->domain_scanner->count_domains_needing_check(),
-				// Drives the Edit-link modal's provider <select> and its
-				// Convert-vs-Reclassify save-button label -- can_wrap()
-				// already folds in is_configured() for ShopMy, so an
-				// unconfigured provider correctly shows as reclassify-only
-				// here too, same gate the bulk action and row action use.
-				'providers'         => $this->get_provider_capabilities(),
-				'strings'           => array(
+				'ajaxUrl'             => admin_url( 'admin-ajax.php' ),
+				'action'              => self::AJAX_SCAN_ACTION,
+				'domainCheckAction'   => self::AJAX_DOMAIN_CHECK_ACTION,
+				'editLinkAction'      => self::AJAX_EDIT_LINK_ACTION,
+				'matchProviderAction' => self::AJAX_MATCH_PROVIDER_ACTION,
+				'nonce'               => wp_create_nonce( self::NONCE_ACTION ),
+				'total'               => $this->scanner->count_scannable_posts(),
+				'domainsTotal'        => $this->domain_scanner->count_domains_needing_check(),
+				// The bulk "Convert to [Provider]" action's own confirm()
+				// text needs a provider label by id -- the Edit modal no
+				// longer does (it infers the provider from the URL server-
+				// side, see ALM_Admin::handle_match_provider()), so this is
+				// bulk-only now.
+				'providers'           => $this->get_provider_capabilities(),
+				'strings'             => array(
 					'scanning'         => __( 'Scanning…', 'affiliate-link-manager' ),
 					'scanDone'         => __( 'Scan complete — reloading…', 'affiliate-link-manager' ),
 					'scanStart'        => __( 'Run Scan', 'affiliate-link-manager' ),
@@ -168,16 +171,12 @@ class ALM_Admin {
 					'domainCheckDone'  => __( 'Domain check complete — reloading…', 'affiliate-link-manager' ),
 					'checkDomains'     => __( 'Check Domains', 'affiliate-link-manager' ),
 					'editModalTitle'   => __( 'Edit link', 'affiliate-link-manager' ),
-					'generateAndSave'  => __( 'Generate & Save', 'affiliate-link-manager' ),
-					'saveUrl'          => __( 'Save URL', 'affiliate-link-manager' ),
-					'reclassifyOnly'   => __( 'Reclassify Only', 'affiliate-link-manager' ),
+					'save'             => __( 'Save', 'affiliate-link-manager' ),
 					'saving'           => __( 'Saving…', 'affiliate-link-manager' ),
 					'cancel'           => __( 'Cancel', 'affiliate-link-manager' ),
-					'generateHelp'     => __( 'This will generate a new tracked link for this provider and replace the current URL in the post.', 'affiliate-link-manager' ),
-					'saveUrlHelp'      => __( "Saves this URL into the post, replacing what's there now.", 'affiliate-link-manager' ),
-					'reclassifyHelp'   => __( "This provider can't generate tracked links automatically -- this just relabels the record, the post itself won't change.", 'affiliate-link-manager' ),
+					'matching'         => __( 'Checking…', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
-					'forceConvertWarn' => __( 'This link is already tracked under %s, which may already be earning commission. Converting will replace it -- are you sure?', 'affiliate-link-manager' ),
+					'forceConvertWarn' => __( 'This link is currently tracked under %s. Saving will replace it -- are you sure?', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "ShopMy" */
 					'bulkConvertWarn'  => __( 'Convert all selected links to %s? This replaces the tracked link for any that already have one under a different network.', 'affiliate-link-manager' ),
 				),
@@ -186,14 +185,14 @@ class ALM_Admin {
 	}
 
 	/**
-	 * The Edit modal's provider picker -- deliberately excludes
-	 * ALM_Provider_Generic ("Unclassified"). It's the always-matches
-	 * fallback label the scanner uses when nothing else claimed a URL,
-	 * not a real network an admin would ever deliberately convert *to*;
-	 * offering it as a pickable option was exactly the confusing "what
-	 * do you mean by Unclassified?" this exists to avoid (same reason
-	 * it's excluded from every other part of the UI, see the three-tier
-	 * restructure elsewhere in this class).
+	 * Feeds the bulk "Convert to [Provider]" action's confirm() text
+	 * (see assets/admin.js) with a provider label by id -- deliberately
+	 * excludes ALM_Provider_Generic ("Unclassified"/"Unaffiliated").
+	 * It's the always-matches fallback the scanner uses when nothing
+	 * else claimed a URL, not a real network anything would ever be
+	 * bulk-"converted to" (same reason it's excluded from every other
+	 * part of the UI, see the three-tier restructure elsewhere in this
+	 * class).
 	 *
 	 * @return array<string,array{label:string,canWrap:bool}>
 	 */
@@ -218,7 +217,7 @@ class ALM_Admin {
 	 * @return void
 	 */
 	public function handle_links_bulk_action() {
-		$list_table = new ALM_Links_List_Table( $this->providers, $this->converter );
+		$list_table = new ALM_Links_List_Table( $this->providers, $this->adapters, $this->converter );
 		$list_table->process_bulk_action();
 	}
 
@@ -262,6 +261,9 @@ class ALM_Admin {
 	 * dispatched from handle_links_bulk_action() above) since it's just
 	 * WP_List_Table's normal bulk-action form submit, not a JS-driven
 	 * flow -- both funnel through the same ALM_Link_Converter either way.
+	 * The modal only ever edits a URL -- the provider is never a manual
+	 * choice here, ALM_Link_Converter::save_url() infers it via
+	 * ALM_Provider_Registry::match_url(), same as the scanner.
 	 *
 	 * @return void
 	 */
@@ -272,21 +274,12 @@ class ALM_Admin {
 			wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'affiliate-link-manager' ) ), 403 );
 		}
 
-		$id          = isset( $_POST['id'] ) ? absint( wp_unslash( $_POST['id'] ) ) : 0;
-		$provider_id = isset( $_POST['provider'] ) ? sanitize_key( wp_unslash( $_POST['provider'] ) ) : '';
-		// Optional -- an explicit replacement URL, e.g. a link the admin
-		// already generated on the network's own site and is pasting in
-		// (the only path for a provider that can't wrap_url() itself,
-		// like RewardStyle). esc_url_raw() both sanitizes and normalizes,
-		// so a trivial formatting difference (trailing slash, etc.)
-		// doesn't get misread by ALM_Link_Converter as "unchanged."
-		$url = ! empty( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ) ) : null; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated -- esc_url_raw() is itself the sanitization here.
+		$id = isset( $_POST['id'] ) ? absint( wp_unslash( $_POST['id'] ) ) : 0;
+		// esc_url_raw() is itself the sanitization here -- the raw
+		// wp_unslash() below is not output or stored on its own.
+		$url = ! empty( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated
 
-		if ( ! $id || '' === $provider_id ) {
-			wp_send_json_error( array( 'message' => __( 'Missing link or provider.', 'affiliate-link-manager' ) ), 400 );
-		}
-
-		if ( null !== $url && '' === $url ) {
+		if ( ! $id || '' === $url ) {
 			wp_send_json_error( array( 'message' => __( 'That URL does not look valid.', 'affiliate-link-manager' ) ), 400 );
 		}
 
@@ -299,13 +292,45 @@ class ALM_Admin {
 			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 404 );
 		}
 
-		$result = $this->converter->convert( $item, $provider_id, $url );
+		$result = $this->converter->save_url( $item, $url );
 
 		if ( is_wp_error( $result ) ) {
 			wp_send_json_error( array( 'message' => $result->get_error_message() ) );
 		}
 
 		wp_send_json_success();
+	}
+
+	/**
+	 * Live provider inference for the Edit modal, as the admin edits
+	 * the URL field -- same ALM_Provider_Registry::match_url() the
+	 * scanner itself uses, never a manual choice. A URL matching
+	 * nothing registered is a normal, valid answer ("Unaffiliated"),
+	 * not an error.
+	 *
+	 * @return void
+	 */
+	public function handle_match_provider() {
+		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'affiliate-link-manager' ) ), 403 );
+		}
+
+		$url = ! empty( $_POST['url'] ) ? esc_url_raw( wp_unslash( $_POST['url'] ) ) : ''; // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotValidated -- esc_url_raw() is itself the sanitization here.
+
+		if ( '' === $url ) {
+			wp_send_json_error( array( 'message' => __( 'That URL does not look valid.', 'affiliate-link-manager' ) ), 400 );
+		}
+
+		$provider = $this->providers->match_url( $url );
+
+		wp_send_json_success(
+			array(
+				'id'    => $provider->get_id(),
+				'label' => ALM_Links_List_Table::provider_display_label( $provider ),
+			)
+		);
 	}
 
 	public function handle_settings_forms() {
@@ -376,7 +401,7 @@ class ALM_Admin {
 	}
 
 	public function render_links() {
-		$list_table = new ALM_Links_List_Table( $this->providers, $this->converter );
+		$list_table = new ALM_Links_List_Table( $this->providers, $this->adapters, $this->converter );
 		$list_table->prepare_items();
 		require ALM_PATH . 'includes/views/links.php';
 	}

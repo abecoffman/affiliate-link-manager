@@ -24,6 +24,10 @@ class HtmlFragmentTestSubject {
 	public function replace( $html, $index, $old_url, $new_url ) {
 		return $this->replace_anchor_href( $html, $index, $old_url, $new_url );
 	}
+
+	public function context( $html, $index ) {
+		return $this->get_anchor_context( $html, $index );
+	}
 }
 
 /**
@@ -97,6 +101,56 @@ class HtmlFragmentTest extends TestCase {
 		$result = $subject->replace( $html, 5, 'https://a.example.com/', 'https://new.example.com/' );
 
 		$this->assertInstanceOf( \WP_Error::class, $result );
+	}
+
+	public function test_get_anchor_context_splits_surrounding_text_around_the_anchor() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<p>Wearing my favorite <a href="https://a.example.com/">Birkenstocks</a> today with jeans.</p>';
+
+		$context = $subject->context( $html, 0 );
+
+		$this->assertSame( 'Wearing my favorite', $context['before'] );
+		$this->assertSame( 'Birkenstocks', $context['text'] );
+		$this->assertSame( 'today with jeans.', $context['after'] );
+	}
+
+	public function test_get_anchor_context_handles_a_link_with_no_surrounding_text() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<p><a href="https://a.example.com/">Just this link</a></p>';
+
+		$context = $subject->context( $html, 0 );
+
+		$this->assertSame( '', $context['before'] );
+		$this->assertSame( 'Just this link', $context['text'] );
+		$this->assertSame( '', $context['after'] );
+	}
+
+	public function test_get_anchor_context_returns_null_for_an_out_of_range_index() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<p><a href="https://a.example.com/">first</a></p>';
+
+		$this->assertNull( $subject->context( $html, 5 ) );
+	}
+
+	public function test_get_anchor_context_returns_null_for_empty_html() {
+		$subject = new HtmlFragmentTestSubject();
+		$this->assertNull( $subject->context( '', 0 ) );
+	}
+
+	public function test_get_anchor_context_truncates_long_surrounding_text() {
+		$subject = new HtmlFragmentTestSubject();
+		$long    = str_repeat( 'a very long sentence of prose ', 10 );
+		$html    = '<p>' . $long . '<a href="https://a.example.com/">the link</a>' . $long . '</p>';
+
+		$context = $subject->context( $html, 0 );
+
+		// 80 chars plus the multi-byte "…" marker (3 bytes in UTF-8) --
+		// strlen() is byte length, not character count.
+		$max_bytes = 80 + strlen( '…' );
+		$this->assertLessThanOrEqual( $max_bytes, strlen( $context['before'] ), 'before text should be truncated to a short snippet.' );
+		$this->assertStringStartsWith( '…', $context['before'] );
+		$this->assertLessThanOrEqual( $max_bytes, strlen( $context['after'] ) );
+		$this->assertStringEndsWith( '…', $context['after'] );
 	}
 
 	public function test_never_leaks_the_synthetic_wrapper_div() {

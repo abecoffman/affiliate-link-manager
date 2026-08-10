@@ -80,4 +80,21 @@ abstract class ALM_Content_Adapter {
 	 * @return true|WP_Error
 	 */
 	abstract public function replace_link( $post_id, $location, $old_url, $new_url );
+
+	/**
+	 * A short "as it reads in the post" snippet around this link --
+	 * for a link editor UI to show what's actually being changed, not
+	 * just an isolated URL. Optional: not abstract on purpose, so any
+	 * adapter (including a third-party one registered via
+	 * alm_register_content_adapters) that doesn't implement this simply
+	 * has no context shown for its links rather than a fatal error.
+	 *
+	 * @param int    $post_id
+	 * @param string $location The opaque handle from get_links().
+	 * @return array{before:string,text:string,after:string}|null
+	 */
+	// phpcs:ignore Generic.CodeAnalysis.UnusedFunctionParameter.FoundAfterLastUsed -- kept named in the base signature so every subclass override documents the same contract; the base implementation itself always returns null regardless of input.
+	public function get_context( $post_id, $location ) {
+		return null;
+	}
 }

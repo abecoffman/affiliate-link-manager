@@ -35,11 +35,16 @@ class ALM_Links_List_Table extends WP_List_Table {
 	private $providers;
 
 	/**
+	 * @var ALM_Adapter_Registry
+	 */
+	private $adapters;
+
+	/**
 	 * @var ALM_Link_Converter
 	 */
 	private $converter;
 
-	public function __construct( ALM_Provider_Registry $providers, ALM_Link_Converter $converter ) {
+	public function __construct( ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Link_Converter $converter ) {
 		parent::__construct(
 			array(
 				'singular' => 'alm_link',
@@ -48,6 +53,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 			)
 		);
 		$this->providers = $providers;
+		$this->adapters  = $adapters;
 		$this->converter = $converter;
 	}
 
@@ -185,6 +191,27 @@ class ALM_Links_List_Table extends WP_List_Table {
 		}
 
 		return $labels[ $status ][ $long ? 'long' : 'short' ];
+	}
+
+	/**
+	 * Single source of truth for how a provider reads in admin UI --
+	 * used by column_provider() (below), the Edit modal's live
+	 * provider-match display, and its AJAX match endpoint
+	 * (ALM_Admin::handle_match_provider()), so the three can never say
+	 * different things about the same provider. ALM_Provider_Generic
+	 * ("Unclassified") is the scanner's own always-matches fallback,
+	 * not a real network -- reads as "Unaffiliated" everywhere an admin
+	 * sees it as a *result*, distinct from how the three-tier status
+	 * restructure already keeps it out of anywhere it'd read as a
+	 * pickable destination.
+	 *
+	 * @param ALM_Provider $provider
+	 * @return string
+	 */
+	public static function provider_display_label( ALM_Provider $provider ) {
+		return $provider instanceof ALM_Provider_Generic
+			? __( 'Unaffiliated', 'affiliate-link-manager' )
+			: $provider->get_label();
 	}
 
 	/**
@@ -488,7 +515,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 */
 	public function column_provider( $item ) {
 		$provider = $this->providers->get_provider( $item['provider'] );
-		$label    = $provider ? $provider->get_label() : $item['provider'];
+		$label    = $provider ? self::provider_display_label( $provider ) : $item['provider'];
 
 		return sprintf( '<span class="alm-badge alm-badge-%s">%s</span>', esc_attr( $item['provider'] ), esc_html( $label ) );
 	}
@@ -538,16 +565,24 @@ class ALM_Links_List_Table extends WP_List_Table {
 
 		// Opens the JS-driven Edit modal (assets/admin.js) -- data
 		// attributes carry everything the modal needs to render without
-		// a round-trip, since this row already has it all server-side.
-		// href="#" with an explicit click handler, not a real link: this
-		// never navigates, same as WP core's own inline-edit row actions.
+		// a round-trip, since this row already has it all server-side
+		// (the one exception is re-matching the provider live as the
+		// admin edits the URL, which does need a round-trip -- see
+		// ALM_Admin::handle_match_provider()). href="#" with an explicit
+		// click handler, not a real link: this never navigates, same as
+		// WP core's own inline-edit row actions.
+		$provider_obj         = $this->providers->get_provider( $item['provider'] );
+		$context              = $this->get_link_context( $item );
 		$actions['edit_link'] = sprintf(
-			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-url="%3$s" data-anchor="%4$s" data-provider="%5$s">%6$s</a>',
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-url="%3$s" data-anchor="%4$s" data-provider="%5$s" data-provider-label="%6$s" data-context-before="%7$s" data-context-after="%8$s">%9$s</a>',
 			(int) $item['id'],
 			esc_attr( get_the_title( $item['post_id'] ) ),
 			esc_attr( $item['url'] ),
 			esc_attr( $item['anchor_text'] ),
 			esc_attr( $item['provider'] ),
+			esc_attr( $provider_obj ? self::provider_display_label( $provider_obj ) : $item['provider'] ),
+			esc_attr( $context ? $context['before'] : '' ),
+			esc_attr( $context ? $context['after'] : '' ),
 			esc_html__( 'Edit', 'affiliate-link-manager' )
 		);
 
@@ -574,6 +609,25 @@ class ALM_Links_List_Table extends WP_List_Table {
 		);
 
 		return esc_html( $item['anchor_text'] ) . $this->row_actions( $actions );
+	}
+
+	/**
+	 * Best-effort "as it reads in the post" context for the Edit
+	 * modal's Link text display -- see
+	 * ALM_Content_Adapter::get_context()'s docblock for why this can
+	 * legitimately come back null (a third-party adapter that doesn't
+	 * implement it, or a link the adapter can no longer locate).
+	 *
+	 * @param array $item
+	 * @return array{before:string,text:string,after:string}|null
+	 */
+	private function get_link_context( array $item ) {
+		$adapter = $this->adapters->get_adapter( $item['adapter'] );
+		if ( ! $adapter ) {
+			return null;
+		}
+
+		return $adapter->get_context( (int) $item['post_id'], $item['location'] );
 	}
 
 	/**

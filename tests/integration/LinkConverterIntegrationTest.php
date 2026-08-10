@@ -150,13 +150,14 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * The other half of the Edit modal: an explicit replacement URL --
+	 * The Edit modal's whole reason for existing: an explicit URL --
 	 * e.g. a real link the admin already generated on RewardStyle's own
 	 * site and is pasting in -- is written verbatim, no wrap_url()
-	 * involved. This is the *only* way to attach a tracked link for a
-	 * provider that can't build one itself.
+	 * involved, with the provider auto-inferred via match_url() rather
+	 * than manually chosen. This is the *only* way to attach a tracked
+	 * link for a provider that can't build one itself.
 	 */
-	public function test_convert_writes_an_explicit_url_verbatim_for_a_non_wrapping_provider() {
+	public function test_save_url_writes_the_url_verbatim_and_infers_the_provider() {
 		$post_id = self::factory()->post->create(
 			array(
 				'post_status'  => 'publish',
@@ -177,11 +178,11 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 		);
 
 		$pasted_url = 'https://rstyle.me/+manually-generated-abc123';
-		$result     = $this->converter->convert( $item, 'rewardstyle', $pasted_url );
+		$result     = $this->converter->save_url( $item, $pasted_url );
 		$this->assertTrue( $result );
 
 		$row = $this->get_link_row( $item['id'] );
-		$this->assertSame( 'rewardstyle', $row['provider'] );
+		$this->assertSame( 'rewardstyle', $row['provider'], 'match_url() must infer RewardStyle from the rstyle.me host, never a manual choice.' );
 		$this->assertSame( 'active', $row['status'] );
 		$this->assertSame( $pasted_url, $row['url'] );
 
@@ -191,11 +192,12 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * An explicit URL always wins over auto-generation, even when the
-	 * selected provider *can* wrap -- editing the URL field is a
-	 * deliberate override, not a suggestion wrap_url() second-guesses.
+	 * A pasted-in ShopMy URL never goes through wrap_url() -- the admin
+	 * is providing the exact destination themselves, not asking this
+	 * plugin to generate one, even though ShopMy happens to be
+	 * can_wrap()-capable.
 	 */
-	public function test_convert_prefers_an_explicit_url_over_wrapping_even_for_a_wrap_capable_provider() {
+	public function test_save_url_never_wraps_a_url_the_admin_provided_directly() {
 		$post_id = self::factory()->post->create(
 			array(
 				'post_status'  => 'publish',
@@ -216,7 +218,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 		);
 
 		$pasted_url = 'https://go.shopmy.us/p-already-generated-manually';
-		$result     = $this->converter->convert( $item, 'shopmy', $pasted_url );
+		$result     = $this->converter->save_url( $item, $pasted_url );
 		$this->assertTrue( $result );
 
 		$row = $this->get_link_row( $item['id'] );
@@ -225,12 +227,12 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Submitting a URL that happens to equal what's already stored must
-	 * behave exactly like not submitting one at all (auto-generate /
-	 * reclassify, per the target provider) -- the "was this actually
-	 * edited?" check is a real equality test, not "was the field present."
+	 * A URL matching no registered provider is a legitimate outcome,
+	 * not an error -- saved as given, classified "unaffiliated" (the
+	 * scanner's own fallback), never silently promoted to a real
+	 * Affiliate Link it isn't just because an admin clicked Save.
 	 */
-	public function test_convert_treats_an_unchanged_submitted_url_the_same_as_no_url() {
+	public function test_save_url_for_an_unrecognized_url_stays_unclassified() {
 		$post_id = self::factory()->post->create(
 			array(
 				'post_status'  => 'publish',
@@ -250,11 +252,50 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 			)
 		);
 
-		$result = $this->converter->convert( $item, 'shopmy', 'https://www.zara.com/product' );
+		$new_url = 'https://www.a-different-unrecognized-retailer.example/product';
+		$result  = $this->converter->save_url( $item, $new_url );
 		$this->assertTrue( $result );
 
 		$row = $this->get_link_row( $item['id'] );
-		$this->assertStringContainsString( 'go.shopmy.us/apx/sDXyBS', $row['url'], 'An unchanged submitted URL should still trigger wrap_url(), same as submitting none.' );
+		$this->assertSame( 'unclassified', $row['provider'] );
+		$this->assertSame( 'unclassified', $row['status'], 'No real network recognized this URL -- must not be marked active.' );
+		$this->assertSame( $new_url, $row['url'] );
+	}
+
+	public function test_save_url_refuses_when_content_changed_since_the_last_scan() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'     => $post_id,
+				'provider'    => 'unclassified',
+				'adapter'     => 'post_content',
+				'location'    => '0',
+				'url'         => 'https://www.zara.com/product',
+				'anchor_text' => 'tank top',
+				'status'      => 'convertible',
+			)
+		);
+
+		wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_content' => '<p><a href="https://www.zara.com/different-product">tank top</a></p>',
+			)
+		);
+
+		$result = $this->converter->save_url( $item, 'https://rstyle.me/+manually-generated-abc123' );
+		$this->assertInstanceOf( WP_Error::class, $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertSame( 'unclassified', $row['provider'], 'The record must be left exactly as it was.' );
+		$this->assertSame( 'convertible', $row['status'] );
+		$this->assertSame( 'https://www.zara.com/product', $row['url'] );
 	}
 
 	public function test_convert_to_an_unknown_provider_returns_an_error() {

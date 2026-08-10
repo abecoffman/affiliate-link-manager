@@ -243,6 +243,16 @@ table.alm_posts .column-breakdown {
 	word-break: break-all;
 }
 
+/* The Link text snippet -- before/anchor/after, mirroring how the link
+   actually reads in place in the post (ALM_Content_Adapter::get_context()) --
+   rather than just the isolated anchor text on its own. */
+.alm-modal-snippet mark {
+	background: #f0e6fb;
+	color: #6b3fa0;
+	padding: 0 2px;
+	border-radius: 2px;
+}
+
 #alm-edit-link-url-input {
 	margin-bottom: 4px;
 }

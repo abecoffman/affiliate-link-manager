@@ -156,72 +156,35 @@
 	 * modal widget): focus trap, ESC-to-close, and returning focus to
 	 * the row action on close are the accessibility baseline this is
 	 * built to, not optional extras.
+	 *
+	 * Deliberately has no provider picker -- the affiliate network is
+	 * always inferred from the URL, live, via
+	 * ALM_Admin::handle_match_provider() (the same
+	 * ALM_Provider_Registry::match_url() the scanner itself uses), not
+	 * a manual choice. See ALM_Link_Converter::save_url().
 	 */
 	var modal = document.getElementById( 'alm-edit-link-modal' );
 
 	if ( modal ) {
-		var providerSelect = document.getElementById( 'alm-edit-link-provider' );
-		var helpText = document.getElementById( 'alm-edit-link-help' );
 		var errorText = document.getElementById( 'alm-edit-link-error' );
 		var saveButton = document.getElementById( 'alm-edit-link-save' );
 		var cancelButton = document.getElementById( 'alm-edit-link-cancel' );
 		var postField = document.getElementById( 'alm-edit-link-post' );
-		var anchorField = document.getElementById( 'alm-edit-link-anchor' );
+		var contextField = document.getElementById( 'alm-edit-link-context' );
+		var providerDisplay = document.getElementById( 'alm-edit-link-provider-display' );
 		var urlInput = document.getElementById( 'alm-edit-link-url-input' );
 
 		var currentId = null;
-		var originalProvider = null;
+		var originalProviderId = null;
+		var originalProviderLabel = null;
 		var originalUrl = null;
+		var matchedProviderId = null;
 		var triggerElement = null;
-
-		var providerCanWrap = function ( id ) {
-			return !! ( almAdmin.providers && almAdmin.providers[ id ] && almAdmin.providers[ id ].canWrap );
-		};
-
-		var providerLabel = function ( id ) {
-			return ( almAdmin.providers && almAdmin.providers[ id ] ) ? almAdmin.providers[ id ].label : id;
-		};
-
-		// A row's original provider can be "unclassified" (Candidate/Other
-		// Outbound links) -- the always-matches fallback, deliberately
-		// left out of almAdmin.providers (see
-		// ALM_Admin::get_provider_capabilities()), not a real network
-		// that could ever be "already earning commission." The
-		// force-convert warning below must only fire for an *actual*
-		// known non-wrapping provider (RewardStyle today), never for
-		// this fallback -- otherwise every ordinary Candidate-to-ShopMy
-		// conversion would wrongly trigger it.
-		var isKnownNonWrapProvider = function ( id ) {
-			return !! ( almAdmin.providers && almAdmin.providers[ id ] && ! almAdmin.providers[ id ].canWrap );
-		};
-
-		var urlWasEdited = function () {
-			return urlInput.value.trim() !== originalUrl;
-		};
-
-		// Three save modes, picked the same way ALM_Link_Converter
-		// itself decides server-side (see its docblock): an edited URL
-		// always wins -- pasting in a link already generated on the
-		// network's own site (the only option for a provider that can't
-		// wrap_url() itself, like RewardStyle) always means "save this
-		// exact URL," regardless of which provider is selected.
-		var updateHelpAndSaveLabel = function () {
-			var selected = providerSelect.value;
-
-			if ( urlWasEdited() ) {
-				helpText.textContent = almAdmin.strings.saveUrlHelp;
-				saveButton.textContent = almAdmin.strings.saveUrl;
-			} else if ( providerCanWrap( selected ) ) {
-				helpText.textContent = almAdmin.strings.generateHelp;
-				saveButton.textContent = almAdmin.strings.generateAndSave;
-			} else {
-				helpText.textContent = almAdmin.strings.reclassifyHelp;
-				saveButton.textContent = almAdmin.strings.reclassifyOnly;
-			}
-		};
+		var matchTimer = null;
+		var matchRequestToken = 0;
 
 		var getFocusable = function () {
-			return modal.querySelectorAll( 'button, select, a[href]' );
+			return modal.querySelectorAll( 'button, input, a[href]' );
 		};
 
 		var trapFocus = function ( event ) {
@@ -254,41 +217,97 @@
 		var closeModal = function () {
 			modal.hidden = true;
 			document.removeEventListener( 'keydown', trapFocus );
+			if ( matchTimer ) {
+				clearTimeout( matchTimer );
+			}
 			if ( triggerElement ) {
 				triggerElement.focus();
 			}
 		};
 
+		/**
+		 * Re-matches the provider for whatever's currently in the URL
+		 * field and updates the "Affiliate partner" display -- debounced
+		 * so it fires once after typing pauses, not on every keystroke.
+		 * matchRequestToken guards against a slow older response landing
+		 * after a newer one and clobbering the display with a stale
+		 * result.
+		 */
+		var scheduleProviderMatch = function () {
+			if ( matchTimer ) {
+				clearTimeout( matchTimer );
+			}
+
+			matchTimer = setTimeout( function () {
+				var url = urlInput.value.trim();
+				if ( '' === url ) {
+					return;
+				}
+
+				var thisRequest = ++matchRequestToken;
+				providerDisplay.textContent = almAdmin.strings.matching;
+
+				var body = new FormData();
+				body.append( 'action', almAdmin.matchProviderAction );
+				body.append( 'nonce', almAdmin.nonce );
+				body.append( 'url', url );
+
+				fetch( almAdmin.ajaxUrl, {
+					method: 'POST',
+					credentials: 'same-origin',
+					body: body,
+				} )
+					.then( function ( response ) {
+						return response.json();
+					} )
+					.then( function ( json ) {
+						if ( thisRequest !== matchRequestToken || ! json.success ) {
+							return;
+						}
+						matchedProviderId = json.data.id;
+						providerDisplay.textContent = json.data.label;
+					} );
+			}, 400 );
+		};
+
 		var openModal = function ( link ) {
 			triggerElement = link;
 			currentId = link.getAttribute( 'data-id' );
-			originalProvider = link.getAttribute( 'data-provider' );
+			originalProviderId = link.getAttribute( 'data-provider' );
+			originalProviderLabel = link.getAttribute( 'data-provider-label' );
 			originalUrl = link.getAttribute( 'data-url' );
+			matchedProviderId = originalProviderId;
 
 			postField.textContent = link.getAttribute( 'data-post-title' );
-			anchorField.textContent = link.getAttribute( 'data-anchor' );
+			providerDisplay.textContent = originalProviderLabel;
 			urlInput.value = originalUrl;
 
-			providerSelect.innerHTML = '';
-			if ( almAdmin.providers ) {
-				Object.keys( almAdmin.providers ).forEach( function ( id ) {
-					var option = document.createElement( 'option' );
-					option.value = id;
-					option.textContent = almAdmin.providers[ id ].label;
-					if ( id === originalProvider ) {
-						option.selected = true;
-					}
-					providerSelect.appendChild( option );
-				} );
+			// Mirrors how the link actually reads in the post -- the
+			// anchor's own text set off from its surrounding context,
+			// not just the isolated text on its own. before/after can
+			// legitimately be empty (a link with no real surrounding
+			// prose, or an adapter that doesn't implement get_context()).
+			var before = link.getAttribute( 'data-context-before' ) || '';
+			var after = link.getAttribute( 'data-context-after' ) || '';
+			var anchor = link.getAttribute( 'data-anchor' ) || '';
+			contextField.textContent = '';
+			if ( before ) {
+				contextField.appendChild( document.createTextNode( before + ' ' ) );
+			}
+			var mark = document.createElement( 'mark' );
+			mark.textContent = anchor;
+			contextField.appendChild( mark );
+			if ( after ) {
+				contextField.appendChild( document.createTextNode( ' ' + after ) );
 			}
 
 			errorText.hidden = true;
 			errorText.textContent = '';
-			updateHelpAndSaveLabel();
+			saveButton.textContent = almAdmin.strings.save;
 
 			modal.hidden = false;
 			document.addEventListener( 'keydown', trapFocus );
-			providerSelect.focus();
+			urlInput.focus();
 		};
 
 		document.addEventListener( 'click', function ( event ) {
@@ -300,8 +319,7 @@
 			openModal( link );
 		} );
 
-		providerSelect.addEventListener( 'change', updateHelpAndSaveLabel );
-		urlInput.addEventListener( 'input', updateHelpAndSaveLabel );
+		urlInput.addEventListener( 'input', scheduleProviderMatch );
 
 		cancelButton.addEventListener( 'click', closeModal );
 
@@ -312,16 +330,16 @@
 		} );
 
 		saveButton.addEventListener( 'click', function () {
-			var selected = providerSelect.value;
+			var url = urlInput.value.trim();
 
-			// Switching a link away from a currently non-wrapping,
-			// presumably-already-earning provider (RewardStyle today) to
-			// a different, wrap-capable one is allowed but not silent --
-			// per an explicit product decision, this is a real
-			// monetization tradeoff an admin opts into, not a casual
-			// one-click action.
-			if ( originalProvider && originalProvider !== selected && isKnownNonWrapProvider( originalProvider ) && providerCanWrap( selected ) ) {
-				var warned = window.confirm( almAdmin.strings.forceConvertWarn.replace( '%s', providerLabel( originalProvider ) ) );
+			// The link is currently tracked under a real, known
+			// provider (not "unaffiliated") and saving would attach a
+			// different one -- allowed, but not silent: this is a real
+			// change to what's already tracked, per an explicit product
+			// decision (an admin might legitimately be replacing a dead
+			// or underperforming link).
+			if ( originalProviderId && 'unclassified' !== originalProviderId && matchedProviderId !== originalProviderId ) {
+				var warned = window.confirm( almAdmin.strings.forceConvertWarn.replace( '%s', originalProviderLabel ) );
 				if ( ! warned ) {
 					return;
 				}
@@ -335,15 +353,7 @@
 			body.append( 'action', almAdmin.editLinkAction );
 			body.append( 'nonce', almAdmin.nonce );
 			body.append( 'id', currentId );
-			body.append( 'provider', selected );
-			// Only sent when actually edited -- an unchanged value still
-			// round-tripping through esc_url_raw() server-side could
-			// normalize it (trailing slash, etc.) just differently enough
-			// from the stored value to be misread as an explicit
-			// replacement instead of "use whatever's already there."
-			if ( urlWasEdited() ) {
-				body.append( 'url', urlInput.value.trim() );
-			}
+			body.append( 'url', url );
 
 			fetch( almAdmin.ajaxUrl, {
 				method: 'POST',

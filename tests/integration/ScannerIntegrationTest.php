@@ -285,6 +285,22 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'href="https://www.zara.com/product"', $fresh->post_content );
 	}
 
+	public function test_post_content_adapter_get_context_reads_the_real_post() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Wearing my favorite <a href="https://www.zara.com/product">tank top</a> today.</p>',
+			)
+		);
+
+		$adapter = new ALM_Adapter_Post_Content();
+		$context = $adapter->get_context( $post_id, '0' );
+
+		$this->assertSame( 'Wearing my favorite', $context['before'] );
+		$this->assertSame( 'tank top', $context['text'] );
+		$this->assertSame( 'today.', $context['after'] );
+	}
+
 	public function test_beaver_builder_adapter_replace_link_persists_layout_data_and_resyncs_post_content() {
 		if ( ! class_exists( 'FLBuilderModel' ) ) {
 			$this->markTestSkipped( 'bb-plugin-stub not loaded -- set BB_PLUGIN_STUB_PATH before running.' );

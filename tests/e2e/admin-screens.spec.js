@@ -162,14 +162,13 @@ test.describe('Affiliate Links admin screens', () => {
 
 	/**
 	 * The single-row Edit modal, end to end: opens pre-filled from the
-	 * row's own data attributes, selecting a can_wrap()-capable
-	 * provider (ShopMy) switches the save button to "Generate & Save",
-	 * and saving actually rewrites the live post content -- not just
-	 * this plugin's own tracking table. Exercises the real
-	 * ALM_Admin::handle_edit_link() AJAX endpoint and
-	 * ALM_Link_Converter, not a mock.
+	 * row's own data attributes, pasting a URL live re-infers the
+	 * "Affiliate partner" display (ALM_Admin::handle_match_provider(),
+	 * the real ALM_Provider_Registry::match_url() the scanner itself
+	 * uses -- no manual provider picker), and saving actually rewrites
+	 * the live post content, not just this plugin's own tracking table.
 	 */
-	test('Edit modal converts a Candidate link to a real ShopMy link', async ({ page }) => {
+	test('Edit modal infers the provider from a pasted ShopMy URL and saves it', async ({ page }) => {
 		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
 
 		const row = page.getByRole('row', { name: /a very long product name/ });
@@ -180,8 +179,12 @@ test.describe('Affiliate Links admin screens', () => {
 		const modal = page.locator('#alm-edit-link-modal');
 		await expect(modal).toBeVisible();
 
-		await modal.locator('#alm-edit-link-provider').selectOption('shopmy');
-		await expect(modal.locator('#alm-edit-link-save')).toHaveText('Generate & Save');
+		// Starts unaffiliated -- this fixture link is a raw retailer URL,
+		// a Candidate, not yet a real tracked link.
+		await expect(modal.locator('#alm-edit-link-provider-display')).toHaveText('Unaffiliated');
+
+		await modal.locator('#alm-edit-link-url-input').fill('https://go.shopmy.us/p-manually-generated-123');
+		await expect(modal.locator('#alm-edit-link-provider-display')).toHaveText('ShopMy', { timeout: 5000 });
 
 		await modal.locator('#alm-edit-link-save').click();
 
@@ -195,14 +198,12 @@ test.describe('Affiliate Links admin screens', () => {
 	});
 
 	/**
-	 * The other half of the Edit modal: RewardStyle/LTK (this site's
-	 * dominant network, 2,088+ existing links) can't wrap_url() itself
-	 * -- the only way to attach a real tracked link is to generate it on
-	 * their own site and paste the result in here. Editing the URL field
-	 * must always win over whatever's selected in the provider dropdown,
-	 * writing the pasted URL verbatim rather than trying to "convert" it.
+	 * The modal's whole reason for existing: RewardStyle/LTK (this
+	 * site's dominant network, 2,088+ existing links) can't wrap_url()
+	 * itself -- the only way to attach a real tracked link is to
+	 * generate it on their own site and paste the result in here.
 	 */
-	test('Edit modal saves a manually pasted URL verbatim for a provider that cannot auto-generate one', async ({ page }) => {
+	test('Edit modal saves a manually pasted RewardStyle URL verbatim', async ({ page }) => {
 		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
 
 		const row = page.getByRole('row', { name: /jacket/ });
@@ -215,8 +216,7 @@ test.describe('Affiliate Links admin screens', () => {
 
 		const pastedUrl = 'https://rstyle.me/+manually-generated-abc123';
 		await modal.locator('#alm-edit-link-url-input').fill(pastedUrl);
-		await modal.locator('#alm-edit-link-provider').selectOption('rewardstyle');
-		await expect(modal.locator('#alm-edit-link-save')).toHaveText('Save URL');
+		await expect(modal.locator('#alm-edit-link-provider-display')).toHaveText('RewardStyle / LTK', { timeout: 5000 });
 
 		await modal.locator('#alm-edit-link-save').click();
 
