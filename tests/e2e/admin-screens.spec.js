@@ -233,24 +233,15 @@ test.describe('Affiliate Links admin screens', () => {
 		await expect(firstRow.locator('td[data-colname="Status"]')).toBeVisible();
 	});
 
-	test('Posts list (edit.php) shows an Affiliate Links column that drills into filtered Links', async ({ page }) => {
+	test('edit.php (the native Posts list) does not carry an Affiliate Links column', async ({ page }) => {
+		// Removed deliberately -- the plugin's own dedicated Posts screen
+		// (affiliate-links-posts) covers this, and edit.php was too
+		// crowded already. Real regression guard, not just "nothing to
+		// test": the column key/class would still be present in the DOM
+		// if ALM_Posts_Column were ever accidentally re-wired in.
 		await page.goto('/wp-admin/edit.php');
 
-		// Scoped to a row whose Affiliate Links cell actually has a
-		// count, not just *a* row matching the title -- this
-		// environment's wp-cli fixture creation has proven unreliable
-		// about producing exactly one "ALM E2E fixture post" under
-		// repeated runs, independent of anything the plugin itself does
-		// (confirmed directly against the database). The actual thing
-		// under test is the column + drill-down, not fixture uniqueness.
-		const row = page
-			.locator('tbody#the-list tr', { hasText: 'ALM E2E fixture post' })
-			.filter({ hasNot: page.locator('td.column-alm_links', { hasText: '—' }) })
-			.first();
-		await expect(row.locator('td.column-alm_links')).toContainText(/\d/);
-
-		await row.locator('td.column-alm_links a').click();
-		await expect(page.getByRole('heading', { name: 'Affiliate Links', exact: true })).toBeVisible();
-		await expect(page.getByText('Showing links found in:')).toBeVisible();
+		await expect(page.locator('th#alm_links')).toHaveCount(0);
+		await expect(page.locator('td.column-alm_links')).toHaveCount(0);
 	});
 });

@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.6.0
+ * Version:     1.6.1
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.6.0' );
+define( 'ALM_VERSION', '1.6.1' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -81,13 +81,9 @@ function alm_init() {
 	if ( is_admin() ) {
 		require_once ALM_PATH . 'includes/class-alm-links-list-table.php';
 		require_once ALM_PATH . 'includes/class-alm-posts-list-table.php';
-		require_once ALM_PATH . 'includes/class-alm-posts-column.php';
 
 		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner );
 		$admin->init();
-
-		$posts_column = new ALM_Posts_Column( $scanner );
-		$posts_column->init();
 	}
 }
 add_action( 'plugins_loaded', 'alm_init' );
