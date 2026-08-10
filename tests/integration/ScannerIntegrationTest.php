@@ -301,6 +301,52 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'today.', $context['after'] );
 	}
 
+	/**
+	 * Real gap this closes: the Edit modal's Link text context was
+	 * silently empty for every Beaver-Builder-backed link on honestlywtf
+	 * (get_context() only implemented on ALM_Adapter_Post_Content at
+	 * first) -- found live, on a real BB post, not in a test.
+	 */
+	public function test_beaver_builder_adapter_get_context_reads_the_real_layout_data() {
+		if ( ! class_exists( 'FLBuilderModel' ) ) {
+			$this->markTestSkipped( 'bb-plugin-stub not loaded -- set BB_PLUGIN_STUB_PATH before running.' );
+		}
+
+		$post_id = self::factory()->post->create( array( 'post_status' => 'publish' ) );
+		update_post_meta( $post_id, '_fl_builder_enabled', 1 );
+		update_post_meta(
+			$post_id,
+			'_fl_builder_data',
+			array(
+				'node-1' => (object) array(
+					'type'     => 'module',
+					'settings' => (object) array(
+						'type' => 'rich-text',
+						'text' => '<p>Come hang with us at the <a href="https://www.birkenstock.com/us/magazine/boston-store/">Newbury</a> location.</p>',
+					),
+				),
+			)
+		);
+
+		$adapter = new ALM_Adapter_Beaver_Builder();
+		$context = $adapter->get_context( $post_id, 'node-1:0' );
+
+		$this->assertSame( 'Come hang with us at the', $context['before'] );
+		$this->assertSame( 'Newbury', $context['text'] );
+		$this->assertSame( 'location.', $context['after'] );
+	}
+
+	public function test_beaver_builder_adapter_get_context_returns_null_for_a_malformed_location() {
+		if ( ! class_exists( 'FLBuilderModel' ) ) {
+			$this->markTestSkipped( 'bb-plugin-stub not loaded -- set BB_PLUGIN_STUB_PATH before running.' );
+		}
+
+		$post_id = self::factory()->post->create( array( 'post_status' => 'publish' ) );
+		$adapter = new ALM_Adapter_Beaver_Builder();
+
+		$this->assertNull( $adapter->get_context( $post_id, 'not-a-valid-location' ) );
+	}
+
 	public function test_beaver_builder_adapter_replace_link_persists_layout_data_and_resyncs_post_content() {
 		if ( ! class_exists( 'FLBuilderModel' ) ) {
 			$this->markTestSkipped( 'bb-plugin-stub not loaded -- set BB_PLUGIN_STUB_PATH before running.' );

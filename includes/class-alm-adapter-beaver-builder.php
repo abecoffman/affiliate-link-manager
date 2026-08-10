@@ -113,6 +113,21 @@ class ALM_Adapter_Beaver_Builder extends ALM_Content_Adapter {
 		return true;
 	}
 
+	public function get_context( $post_id, $location ) {
+		$parts = explode( ':', $location, 2 );
+		if ( 2 !== count( $parts ) ) {
+			return null;
+		}
+		list( $node_id, $anchor_index ) = $parts;
+
+		$data = FLBuilderModel::get_layout_data( 'published', $post_id );
+		if ( ! $this->is_rich_text_node( $data, $node_id ) ) {
+			return null;
+		}
+
+		return $this->get_anchor_context( (string) $data[ $node_id ]->settings->text, (int) $anchor_index );
+	}
+
 	/**
 	 * @param int $post_id
 	 * @return array<string,string> node_id => raw HTML text, for every
