@@ -45,6 +45,12 @@ if ( ! defined( 'ABSPATH' ) ) {
 			<span class="description"><?php esc_html_e( "Already have a link generated on the network's own site (e.g. RewardStyle)? Paste it here -- the affiliate partner above updates automatically.", 'affiliate-link-manager' ); ?></span>
 		</p>
 
+		<p id="alm-edit-link-resolved" class="description" hidden>
+			<?php esc_html_e( 'This shortened link actually points to:', 'affiliate-link-manager' ); ?>
+			<span id="alm-edit-link-resolved-url" class="alm-modal-url"></span>
+			<a href="#" id="alm-edit-link-use-resolved" class="alm-modal-text-action"><?php esc_html_e( 'Use this URL', 'affiliate-link-manager' ); ?></a>
+		</p>
+
 		<p id="alm-edit-link-error" class="alm-modal-error" hidden></p>
 
 		<div class="alm-modal-actions">

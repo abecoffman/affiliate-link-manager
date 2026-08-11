@@ -149,6 +149,72 @@
 	}
 
 	/**
+	 * Expand Shortened Links: same no-offset-cursor shape as Check
+	 * Domains above -- ALM_Shortener_Scanner always asks for "the next
+	 * few links still needing resolution," and a link drops out of that
+	 * pool for good (resolved_at gets set) once checked.
+	 */
+	var expandShortenersButton = document.getElementById( 'alm-expand-shorteners' );
+	var shortenerProgress = document.getElementById( 'alm-expand-shorteners-progress' );
+
+	if ( expandShortenersButton ) {
+		var shortenersCheckedSoFar = 0;
+
+		var setShortenerProgressText = function ( text ) {
+			shortenerProgress.hidden = false;
+			shortenerProgress.textContent = text;
+		};
+
+		var expandNextShortenerBatch = function () {
+			var body = new FormData();
+			body.append( 'action', almAdmin.expandShortenersAction );
+			body.append( 'nonce', almAdmin.nonce );
+
+			fetch( almAdmin.ajaxUrl, {
+				method: 'POST',
+				credentials: 'same-origin',
+				body: body,
+			} )
+				.then( function ( response ) {
+					return response.json();
+				} )
+				.then( function ( json ) {
+					if ( ! json.success ) {
+						setShortenerProgressText( almAdmin.strings.error );
+						expandShortenersButton.disabled = false;
+						return;
+					}
+
+					var data = json.data;
+					shortenersCheckedSoFar += data.checked;
+
+					var total = almAdmin.shortenersTotal || 0;
+					var shown = total ? Math.min( shortenersCheckedSoFar, total ) : shortenersCheckedSoFar;
+					setShortenerProgressText( almAdmin.strings.expandingShorteners + ' (' + shown + ( total ? ' / ' + total : '' ) + ')' );
+
+					if ( data.done ) {
+						setShortenerProgressText( almAdmin.strings.expandShortenersDone );
+						window.location.reload();
+						return;
+					}
+
+					expandNextShortenerBatch();
+				} )
+				.catch( function () {
+					setShortenerProgressText( almAdmin.strings.error );
+					expandShortenersButton.disabled = false;
+				} );
+		};
+
+		expandShortenersButton.addEventListener( 'click', function () {
+			expandShortenersButton.disabled = true;
+			shortenersCheckedSoFar = 0;
+			setShortenerProgressText( almAdmin.strings.expandingShorteners );
+			expandNextShortenerBatch();
+		} );
+	}
+
+	/**
 	 * Edit-link modal: opened by clicking a row's own Link cell
 	 * (ALM_Links_List_Table::column_link()), which carries everything
 	 * the modal needs in data-* attributes -- no fetch needed just to
@@ -175,6 +241,9 @@
 		var urlInput = document.getElementById( 'alm-edit-link-url-input' );
 		var ignoreLink = document.getElementById( 'alm-edit-link-ignore' );
 		var deleteLink = document.getElementById( 'alm-edit-link-delete' );
+		var resolvedRow = document.getElementById( 'alm-edit-link-resolved' );
+		var resolvedUrlField = document.getElementById( 'alm-edit-link-resolved-url' );
+		var useResolvedLink = document.getElementById( 'alm-edit-link-use-resolved' );
 
 		var currentId = null;
 		var originalProviderId = null;
@@ -322,6 +391,15 @@
 			ignoreLink.hidden = 'ignored' === link.getAttribute( 'data-status' );
 			deleteLink.href = link.getAttribute( 'data-delete-url' );
 
+			// Only present for a shortened link ALM_Shortener_Scanner has
+			// already resolved -- "Use this URL" fills the field with it
+			// directly rather than making an admin copy/paste it by hand.
+			var resolvedUrl = link.getAttribute( 'data-resolved-url' );
+			resolvedRow.hidden = ! resolvedUrl;
+			if ( resolvedUrl ) {
+				resolvedUrlField.textContent = resolvedUrl;
+			}
+
 			providerDisplay.textContent = originalProviderLabel;
 			urlInput.value = originalUrl;
 
@@ -391,6 +469,13 @@
 			if ( ! window.confirm( almAdmin.strings.deleteConfirm ) ) {
 				event.preventDefault();
 			}
+		} );
+
+		useResolvedLink.addEventListener( 'click', function ( event ) {
+			event.preventDefault();
+			urlInput.value = resolvedUrlField.textContent;
+			scheduleProviderMatch();
+			urlInput.focus();
 		} );
 
 		modal.addEventListener( 'click', function ( event ) {

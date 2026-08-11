@@ -79,3 +79,4 @@ require_once ALM_PATH . 'includes/class-alm-adapter-registry.php';
 require_once ALM_PATH . 'includes/class-alm-candidate-classifier.php';
 require_once ALM_PATH . 'includes/class-alm-domain-checker.php';
 require_once ALM_PATH . 'includes/class-alm-domain-scanner.php';
+require_once ALM_PATH . 'includes/class-alm-shortener-resolver.php';

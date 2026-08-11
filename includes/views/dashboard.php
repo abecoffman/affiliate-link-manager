@@ -14,6 +14,7 @@
  * @var array{new_links?:int,now_stale?:int}          $scan_delta
  * @var array{checked:int,pending:int,confirmed_shops:int,confirmed_noise:int} $domain_check
  * @var array<string,array{label:string,count:int,sample_url:string}> $network_signals
+ * @var int $shorteners_pending
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -194,6 +195,28 @@ $last_scan = get_option( 'alm_last_scan_time', '' );
 			<p class="alm-card-lede"><?php esc_html_e( 'All candidate domains are checked and up to date.', 'affiliate-link-manager' ); ?></p>
 		<?php endif; ?>
 	</div>
+
+	<?php if ( $shorteners_pending > 0 ) : ?>
+		<div class="alm-card">
+			<div class="alm-card-header">
+				<h2><?php esc_html_e( 'Shortened links', 'affiliate-link-manager' ); ?></h2>
+				<p class="alm-card-lede"><?php esc_html_e( 'A URL shortener (bit.ly, etsy.me, ...) reveals nothing about its destination from the link itself. This follows each one\'s real redirect and reclassifies it based on where it actually goes -- a confirmed match against a known network is tracked automatically; a confirmed-dead shortlink is marked stale instead of left looking like an untouched opportunity.', 'affiliate-link-manager' ); ?></p>
+			</div>
+
+			<p>
+				<button type="button" class="button button-primary" id="alm-expand-shorteners">
+					<?php
+					printf(
+						/* translators: %d: number of shortened links waiting to be expanded */
+						esc_html__( 'Expand Shortened Links (%d pending)', 'affiliate-link-manager' ),
+						(int) $shorteners_pending
+					);
+					?>
+				</button>
+				<span id="alm-expand-shorteners-progress" class="alm-scan-progress" hidden></span>
+			</p>
+		</div>
+	<?php endif; ?>
 
 	<?php if ( ! empty( $network_signals ) ) : ?>
 		<div class="alm-card">

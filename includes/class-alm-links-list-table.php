@@ -622,7 +622,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$context      = $this->get_link_context( $item );
 
 		return sprintf(
-			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-view-url="%4$s" data-ignore-url="%5$s" data-delete-url="%6$s" data-status="%7$s" data-url="%8$s" data-anchor="%9$s" data-provider="%10$s" data-provider-label="%11$s" data-context-before="%12$s" data-context-after="%13$s">%14$s</a>',
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-view-url="%4$s" data-ignore-url="%5$s" data-delete-url="%6$s" data-status="%7$s" data-url="%8$s" data-resolved-url="%9$s" data-anchor="%10$s" data-provider="%11$s" data-provider-label="%12$s" data-context-before="%13$s" data-context-after="%14$s">%15$s</a>',
 			(int) $item['id'],
 			esc_attr( get_the_title( $item['post_id'] ) ),
 			esc_attr( $edit_link ? $edit_link : '' ),
@@ -631,6 +631,11 @@ class ALM_Links_List_Table extends WP_List_Table {
 			esc_attr( $this->row_action_url( 'delete', $item['id'] ) ),
 			esc_attr( $item['status'] ),
 			esc_attr( $item['url'] ),
+			// Only meaningful for a shortened link that's been through
+			// ALM_Shortener_Scanner -- see ALM_Install::create_table()'s
+			// docblock for why this lives directly on the link row, not
+			// a shared cache table.
+			esc_attr( ! empty( $item['resolved_url'] ) ? $item['resolved_url'] : '' ),
 			esc_attr( $item['anchor_text'] ),
 			esc_attr( $item['provider'] ),
 			esc_attr( $provider_obj ? self::provider_display_label( $provider_obj ) : $item['provider'] ),

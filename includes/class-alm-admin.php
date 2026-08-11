@@ -15,14 +15,15 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class ALM_Admin {
 
-	const AJAX_SCAN_ACTION           = 'alm_scan_batch';
-	const AJAX_DOMAIN_CHECK_ACTION   = 'alm_check_domains_batch';
-	const AJAX_EDIT_LINK_ACTION      = 'alm_edit_link';
-	const AJAX_MATCH_PROVIDER_ACTION = 'alm_match_provider';
-	const NONCE_ACTION               = 'alm_admin';
-	const SETTINGS_NONCE             = 'alm_settings';
-	const PROVIDERS_NONCE            = 'alm_providers';
-	const CAPABILITY                 = 'manage_options';
+	const AJAX_SCAN_ACTION             = 'alm_scan_batch';
+	const AJAX_DOMAIN_CHECK_ACTION     = 'alm_check_domains_batch';
+	const AJAX_EDIT_LINK_ACTION        = 'alm_edit_link';
+	const AJAX_MATCH_PROVIDER_ACTION   = 'alm_match_provider';
+	const AJAX_EXPAND_SHORTENER_ACTION = 'alm_expand_shorteners_batch';
+	const NONCE_ACTION                 = 'alm_admin';
+	const SETTINGS_NONCE               = 'alm_settings';
+	const PROVIDERS_NONCE              = 'alm_providers';
+	const CAPABILITY                   = 'manage_options';
 
 	const MENU_SLUG = 'affiliate-links';
 
@@ -56,13 +57,19 @@ class ALM_Admin {
 	 */
 	private $network_signal_scanner;
 
-	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner ) {
+	/**
+	 * @var ALM_Shortener_Scanner
+	 */
+	private $shortener_scanner;
+
+	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner, ALM_Shortener_Scanner $shortener_scanner ) {
 		$this->scanner                = $scanner;
 		$this->providers              = $providers;
 		$this->adapters               = $adapters;
 		$this->domain_scanner         = $domain_scanner;
 		$this->converter              = $converter;
 		$this->network_signal_scanner = $network_signal_scanner;
+		$this->shortener_scanner      = $shortener_scanner;
 	}
 
 	public function init() {
@@ -72,6 +79,7 @@ class ALM_Admin {
 		add_action( 'wp_ajax_' . self::AJAX_DOMAIN_CHECK_ACTION, array( $this, 'handle_domain_check_batch' ) );
 		add_action( 'wp_ajax_' . self::AJAX_EDIT_LINK_ACTION, array( $this, 'handle_edit_link' ) );
 		add_action( 'wp_ajax_' . self::AJAX_MATCH_PROVIDER_ACTION, array( $this, 'handle_match_provider' ) );
+		add_action( 'wp_ajax_' . self::AJAX_EXPAND_SHORTENER_ACTION, array( $this, 'handle_expand_shorteners_batch' ) );
 		add_action( 'admin_init', array( $this, 'handle_settings_forms' ) );
 	}
 
@@ -152,40 +160,44 @@ class ALM_Admin {
 			'alm-admin',
 			'almAdmin',
 			array(
-				'ajaxUrl'             => admin_url( 'admin-ajax.php' ),
-				'action'              => self::AJAX_SCAN_ACTION,
-				'domainCheckAction'   => self::AJAX_DOMAIN_CHECK_ACTION,
-				'editLinkAction'      => self::AJAX_EDIT_LINK_ACTION,
-				'matchProviderAction' => self::AJAX_MATCH_PROVIDER_ACTION,
-				'nonce'               => wp_create_nonce( self::NONCE_ACTION ),
-				'total'               => $this->scanner->count_scannable_posts(),
-				'domainsTotal'        => $this->domain_scanner->count_domains_needing_check(),
+				'ajaxUrl'                => admin_url( 'admin-ajax.php' ),
+				'action'                 => self::AJAX_SCAN_ACTION,
+				'domainCheckAction'      => self::AJAX_DOMAIN_CHECK_ACTION,
+				'editLinkAction'         => self::AJAX_EDIT_LINK_ACTION,
+				'matchProviderAction'    => self::AJAX_MATCH_PROVIDER_ACTION,
+				'expandShortenersAction' => self::AJAX_EXPAND_SHORTENER_ACTION,
+				'nonce'                  => wp_create_nonce( self::NONCE_ACTION ),
+				'total'                  => $this->scanner->count_scannable_posts(),
+				'domainsTotal'           => $this->domain_scanner->count_domains_needing_check(),
+				'shortenersTotal'        => $this->shortener_scanner->count_pending(),
 				// The bulk "Convert to [Provider]" action's own confirm()
 				// text needs a provider label by id -- the Edit modal no
 				// longer does (it infers the provider from the URL server-
 				// side, see ALM_Admin::handle_match_provider()), so this is
 				// bulk-only now.
-				'providers'           => $this->get_provider_capabilities(),
-				'strings'             => array(
-					'scanning'         => __( 'Scanning…', 'affiliate-link-manager' ),
-					'scanDone'         => __( 'Scan complete — reloading…', 'affiliate-link-manager' ),
-					'scanStart'        => __( 'Run Scan', 'affiliate-link-manager' ),
-					'error'            => __( 'Something went wrong. Please try again.', 'affiliate-link-manager' ),
-					'checkingDomains'  => __( 'Checking domains…', 'affiliate-link-manager' ),
-					'domainCheckDone'  => __( 'Domain check complete — reloading…', 'affiliate-link-manager' ),
-					'checkDomains'     => __( 'Check Domains', 'affiliate-link-manager' ),
-					'editModalTitle'   => __( 'Edit link', 'affiliate-link-manager' ),
-					'editPost'         => __( 'Edit Post', 'affiliate-link-manager' ),
-					'view'             => __( 'View', 'affiliate-link-manager' ),
-					'save'             => __( 'Save', 'affiliate-link-manager' ),
-					'saving'           => __( 'Saving…', 'affiliate-link-manager' ),
-					'cancel'           => __( 'Cancel', 'affiliate-link-manager' ),
-					'matching'         => __( 'Checking…', 'affiliate-link-manager' ),
-					'deleteConfirm'    => __( "Delete this link? This only removes it from Affiliate Link Manager's records -- it does not change the post.", 'affiliate-link-manager' ),
+				'providers'              => $this->get_provider_capabilities(),
+				'strings'                => array(
+					'scanning'             => __( 'Scanning…', 'affiliate-link-manager' ),
+					'scanDone'             => __( 'Scan complete — reloading…', 'affiliate-link-manager' ),
+					'scanStart'            => __( 'Run Scan', 'affiliate-link-manager' ),
+					'error'                => __( 'Something went wrong. Please try again.', 'affiliate-link-manager' ),
+					'checkingDomains'      => __( 'Checking domains…', 'affiliate-link-manager' ),
+					'domainCheckDone'      => __( 'Domain check complete — reloading…', 'affiliate-link-manager' ),
+					'checkDomains'         => __( 'Check Domains', 'affiliate-link-manager' ),
+					'expandingShorteners'  => __( 'Expanding shortened links…', 'affiliate-link-manager' ),
+					'expandShortenersDone' => __( 'Done — reloading…', 'affiliate-link-manager' ),
+					'editModalTitle'       => __( 'Edit link', 'affiliate-link-manager' ),
+					'editPost'             => __( 'Edit Post', 'affiliate-link-manager' ),
+					'view'                 => __( 'View', 'affiliate-link-manager' ),
+					'save'                 => __( 'Save', 'affiliate-link-manager' ),
+					'saving'               => __( 'Saving…', 'affiliate-link-manager' ),
+					'cancel'               => __( 'Cancel', 'affiliate-link-manager' ),
+					'matching'             => __( 'Checking…', 'affiliate-link-manager' ),
+					'deleteConfirm'        => __( "Delete this link? This only removes it from Affiliate Link Manager's records -- it does not change the post.", 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
-					'forceConvertWarn' => __( 'This link is currently tracked under %s. Saving will replace it -- are you sure?', 'affiliate-link-manager' ),
+					'forceConvertWarn'     => __( 'This link is currently tracked under %s. Saving will replace it -- are you sure?', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "ShopMy" */
-					'bulkConvertWarn'  => __( 'Convert all selected links to %s? This replaces the tracked link for any that already have one under a different network.', 'affiliate-link-manager' ),
+					'bulkConvertWarn'      => __( 'Convert all selected links to %s? This replaces the tracked link for any that already have one under a different network.', 'affiliate-link-manager' ),
 				),
 			)
 		);
@@ -258,6 +270,20 @@ class ALM_Admin {
 		// than the link scanner's own DB-only batches -- a small batch
 		// size keeps this comfortably clear of max_execution_time.
 		$result = $this->domain_scanner->check_batch( 5 );
+
+		wp_send_json_success( $result );
+	}
+
+	public function handle_expand_shorteners_batch() {
+		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'affiliate-link-manager' ) ), 403 );
+		}
+
+		// Real HTTP requests, up to ALM_Shortener_Resolver::MAX_HOPS deep
+		// per link -- same small-batch reasoning as Check Domains above.
+		$result = $this->shortener_scanner->check_batch( 5 );
 
 		wp_send_json_success( $result );
 	}
@@ -399,12 +425,13 @@ class ALM_Admin {
 	}
 
 	public function render_dashboard() {
-		$stats           = $this->get_provider_stats();
-		$status_summary  = $this->get_status_summary();
-		$needs_attention = $this->get_needs_attention_counts();
-		$scan_delta      = get_option( 'alm_last_scan_delta', array() );
-		$domain_check    = $this->get_domain_check_stats();
-		$network_signals = $this->network_signal_scanner->scan();
+		$stats              = $this->get_provider_stats();
+		$status_summary     = $this->get_status_summary();
+		$needs_attention    = $this->get_needs_attention_counts();
+		$scan_delta         = get_option( 'alm_last_scan_delta', array() );
+		$domain_check       = $this->get_domain_check_stats();
+		$network_signals    = $this->network_signal_scanner->scan();
+		$shorteners_pending = $this->shortener_scanner->count_pending();
 		require ALM_PATH . 'includes/views/dashboard.php';
 	}
 

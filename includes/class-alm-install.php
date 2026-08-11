@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ALM_Install {
 
 	const DB_VERSION_OPTION = 'alm_db_version';
-	const DB_VERSION        = '1.2.0';
+	const DB_VERSION        = '1.3.0';
 
 	/**
 	 * Real, documented status values -- the column itself is a plain
@@ -45,18 +45,26 @@ class ALM_Install {
 	 */
 	public static function maybe_upgrade() {
 		// The version-option check alone isn't quite enough to trust: a
-		// dbDelta() call that silently no-ops on one of the two tables
-		// (seen once in practice, cause never fully pinned down --
-		// dbDelta() failures aren't fatal errors) would still let
-		// update_option() below mark the site as "upgraded" regardless,
-		// permanently hiding a table that never actually got created.
-		// Checking the domains table's real existence directly makes
-		// this self-healing on the next boot instead of silently stuck.
+		// dbDelta() call that silently no-ops on part of its work
+		// (dbDelta() failures aren't fatal errors) would still let
+		// update_option() below mark the site as "upgraded" regardless.
+		// Seen twice in practice now, two different shapes -- the
+		// domains table not getting created at all, and (found live on
+		// honestlywtf while adding resolved_url/resolved_at) an ALTER
+		// TABLE silently not adding new columns to the links table even
+		// though a manual re-run of the exact same dbDelta() call
+		// immediately after succeeded. Checking both real schema facts
+		// directly, not just the version option, makes this self-healing
+		// on the next boot instead of silently stuck either way.
 		global $wpdb;
 		$domains_table  = self::domains_table_name();
 		$domains_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $domains_table ) ) === $domains_table;
 
-		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists ) {
+		$links_table         = self::table_name();
+		$show_columns_sql    = "SHOW COLUMNS FROM {$links_table} LIKE %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; the real value (a fixed column name) is bound via prepare() below.
+		$resolved_url_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'resolved_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+
+		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists || ! $resolved_url_exists ) {
 			self::create_table();
 			update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 		}
@@ -109,6 +117,13 @@ class ALM_Install {
 		// dbDelta() is picky about exact formatting (two spaces before
 		// "KEY", each column on its own line) -- see
 		// https://developer.wordpress.org/reference/functions/dbdelta/.
+		//
+		// resolved_url/resolved_at (see ALM_Shortener_Resolver/_Scanner):
+		// unlike the domain-content-check cache below, which is one row
+		// per *domain* shared by every link on it, a shortener's real
+		// destination is unique per link -- bit.ly/abc and bit.ly/xyz go
+		// completely different places -- so this has to live on the link
+		// row itself, not a shared cache table.
 		$sql = "CREATE TABLE {$table_name} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			post_id BIGINT UNSIGNED NOT NULL,
@@ -122,6 +137,8 @@ class ALM_Install {
 			last_seen DATETIME NOT NULL,
 			last_verified DATETIME NULL DEFAULT NULL,
 			dismissed_at DATETIME NULL DEFAULT NULL,
+			resolved_url TEXT NULL,
+			resolved_at DATETIME NULL DEFAULT NULL,
 			PRIMARY KEY  (id),
 			KEY post_id (post_id),
 			KEY provider (provider),
