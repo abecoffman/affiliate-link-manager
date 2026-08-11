@@ -13,6 +13,7 @@
  * @var array<string,int>                            $needs_attention
  * @var array{new_links?:int,now_stale?:int}          $scan_delta
  * @var array{checked:int,pending:int,confirmed_shops:int,confirmed_noise:int} $domain_check
+ * @var array<string,array{label:string,count:int,sample_url:string}> $network_signals
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -193,4 +194,24 @@ $last_scan = get_option( 'alm_last_scan_time', '' );
 			<p class="alm-card-lede"><?php esc_html_e( 'All candidate domains are checked and up to date.', 'affiliate-link-manager' ); ?></p>
 		<?php endif; ?>
 	</div>
+
+	<?php if ( ! empty( $network_signals ) ) : ?>
+		<div class="alm-card">
+			<div class="alm-card-header">
+				<h2><?php esc_html_e( 'Possible unrecognized networks', 'affiliate-link-manager' ); ?></h2>
+				<p class="alm-card-lede"><?php esc_html_e( 'Links through a redirect domain known to belong to a real affiliate network this plugin does not have a provider for yet (see ALM_Network_Signal_Scanner) -- worth building support for, the same way ShopMy, RewardStyle, Amazon, CJ, Rakuten, and ShopStyle already are.', 'affiliate-link-manager' ); ?></p>
+			</div>
+
+			<table class="alm-provider-breakdown">
+				<tbody>
+					<?php foreach ( $network_signals as $signal_domain => $signal ) : ?>
+						<tr>
+							<td><?php echo esc_html( $signal['label'] ); ?> (<?php echo esc_html( $signal_domain ); ?>)</td>
+							<td><?php echo esc_html( $signal['count'] ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		</div>
+	<?php endif; ?>
 </div>

@@ -88,6 +88,26 @@
 	color: #8a4b08;
 }
 
+.alm-badge-amazon {
+	background: #fdecc8;
+	color: #94660c;
+}
+
+.alm-badge-cj {
+	background: #dcefe0;
+	color: #1a6b35;
+}
+
+.alm-badge-rakuten {
+	background: #fde0e0;
+	color: #b8232f;
+}
+
+.alm-badge-shopstyle {
+	background: #e5e0fb;
+	color: #4a3a94;
+}
+
 .alm-badge-unclassified {
 	background: #f0f0f1;
 	color: #646970;

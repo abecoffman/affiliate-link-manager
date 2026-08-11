@@ -21,6 +21,10 @@ class ALM_Provider_Registry {
 		$providers = array(
 			new ALM_Provider_ShopMy(),
 			new ALM_Provider_RewardStyle(),
+			new ALM_Provider_Amazon(),
+			new ALM_Provider_CJ(),
+			new ALM_Provider_Rakuten(),
+			new ALM_Provider_ShopStyle(),
 		);
 
 		/**

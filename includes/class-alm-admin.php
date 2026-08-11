@@ -51,12 +51,18 @@ class ALM_Admin {
 	 */
 	private $converter;
 
-	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter ) {
-		$this->scanner        = $scanner;
-		$this->providers      = $providers;
-		$this->adapters       = $adapters;
-		$this->domain_scanner = $domain_scanner;
-		$this->converter      = $converter;
+	/**
+	 * @var ALM_Network_Signal_Scanner
+	 */
+	private $network_signal_scanner;
+
+	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner ) {
+		$this->scanner                = $scanner;
+		$this->providers              = $providers;
+		$this->adapters               = $adapters;
+		$this->domain_scanner         = $domain_scanner;
+		$this->converter              = $converter;
+		$this->network_signal_scanner = $network_signal_scanner;
 	}
 
 	public function init() {
@@ -398,6 +404,7 @@ class ALM_Admin {
 		$needs_attention = $this->get_needs_attention_counts();
 		$scan_delta      = get_option( 'alm_last_scan_delta', array() );
 		$domain_check    = $this->get_domain_check_stats();
+		$network_signals = $this->network_signal_scanner->scan();
 		require ALM_PATH . 'includes/views/dashboard.php';
 	}
 

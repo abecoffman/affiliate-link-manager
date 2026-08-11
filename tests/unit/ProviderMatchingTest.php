@@ -11,6 +11,10 @@ use Brain\Monkey\Functions;
 /**
  * @covers \ALM_Provider_ShopMy
  * @covers \ALM_Provider_RewardStyle
+ * @covers \ALM_Provider_Amazon
+ * @covers \ALM_Provider_CJ
+ * @covers \ALM_Provider_Rakuten
+ * @covers \ALM_Provider_ShopStyle
  * @covers \ALM_Provider_Generic
  * @covers \ALM_Provider_Registry
  */
@@ -44,6 +48,102 @@ class ProviderMatchingTest extends TestCase {
 		// links is a monetization decision, never automatic. See
 		// ALM_Provider_RewardStyle's class docblock.
 		$provider = new \ALM_Provider_RewardStyle();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	public function test_amazon_matches_short_links() {
+		$provider = new \ALM_Provider_Amazon();
+		$this->assertTrue( $provider->matches_url( 'https://amzn.to/3XUY1At' ) );
+	}
+
+	/**
+	 * @dataProvider provide_amazon_tagged_urls
+	 */
+	public function test_amazon_matches_direct_links_only_when_tagged( $url, $expected ) {
+		$provider = new \ALM_Provider_Amazon();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_amazon_tagged_urls() {
+		return array(
+			'tagged product link'        => array( 'http://www.amazon.com/gp/product/2759403963?tag=lifecont-20', true ),
+			'tagged, other params first' => array( 'https://www.amazon.co.uk/dp/B00073I09S/ref=sr_1_3?ie=UTF8&tag=mytag-21', true ),
+			'tagged smile subdomain'     => array( 'https://smile.amazon.com/dp/B00073I09S?tag=mytag-20', true ),
+			// The real, common case on honestlywtf: an old product link
+			// from before this site had an Associates account. Matching
+			// this would misclassify a genuine Candidate as already
+			// tracked -- confirmed against real data (77 of honestlywtf's
+			// 185 amazon.com links have no tag at all).
+			'untagged product link'      => array( 'http://www.amazon.com/dp/B00073I09S', false ),
+			'lookalike domain'           => array( 'https://notamazon.com/dp/B00073I09S?tag=fake-20', false ),
+			'unrelated retailer'         => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_amazon_cannot_wrap_new_links() {
+		// No public API to generate a real Associates tag -- that
+		// requires the site's own Associates account (SiteStripe or a
+		// manual tag), not something this plugin can fabricate. Same
+		// classify-only reasoning as ALM_Provider_RewardStyle.
+		$provider = new \ALM_Provider_Amazon();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	public function test_registry_matches_amazon_before_falling_back() {
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		$registry = new \ALM_Provider_Registry();
+		$provider = $registry->match_url( 'https://amzn.to/3XUY1At' );
+
+		$this->assertSame( 'amazon', $provider->get_id() );
+	}
+
+	/**
+	 * @dataProvider provide_cj_urls
+	 */
+	public function test_cj_matches_its_redirect_domain_family( $url, $expected ) {
+		$provider = new \ALM_Provider_CJ();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_cj_urls() {
+		return array(
+			'anrdoezrs.net (confirmed on honestlywtf)' => array( 'http://www.anrdoezrs.net/links/7581063/type/dlg/https://society6.com/prints', true ),
+			'jdoqocy.com'                               => array( 'https://jdoqocy.com/click-123', true ),
+			'kqzyfj.com'                                => array( 'https://www.kqzyfj.com/click-123', true ),
+			'tkqlhce.com'                                => array( 'https://tkqlhce.com/click-123', true ),
+			'dpbolvw.net'                                => array( 'https://dpbolvw.net/click-123', true ),
+			'lookalike domain'                          => array( 'https://notanrdoezrs.net/click-123', false ),
+			'unrelated retailer'                        => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_cj_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_CJ();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	public function test_rakuten_matches_only_linksynergy() {
+		$provider = new \ALM_Provider_Rakuten();
+		$this->assertTrue( $provider->matches_url( 'http://click.linksynergy.com/fs-bin/click?id=QcQPJCw8spc&offerid=238161.10001574&type=3' ) );
+		$this->assertFalse( $provider->matches_url( 'https://www.zara.com/us/en/product.html' ) );
+	}
+
+	public function test_rakuten_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_Rakuten();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	public function test_shopstyle_matches_its_known_domains() {
+		$provider = new \ALM_Provider_ShopStyle();
+		$this->assertTrue( $provider->matches_url( 'http://shopstyle.it/l/IaAT' ) );
+		$this->assertTrue( $provider->matches_url( 'https://shop-links.co/abc123' ) );
+		$this->assertFalse( $provider->matches_url( 'https://www.zara.com/us/en/product.html' ) );
+	}
+
+	public function test_shopstyle_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_ShopStyle();
 		$this->assertFalse( $provider->can_wrap() );
 	}
 
