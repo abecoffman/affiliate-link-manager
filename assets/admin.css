@@ -159,9 +159,19 @@
 	color: #646970;
 }
 
+/* Block, not inline, and on its own line under the button -- found
+   live, clicking Run Scan for real rather than only checking rendered
+   HTML: inline next to the button, a real in-progress count ("Scanning…
+   (3100 / 3125)") is long enough to wrap, and with no fixed column
+   widths on the table it was sitting in (see .alm-tasks-table below),
+   wrapping this cell also squeezed and wrapped the unrelated Last run
+   cell in the same row. white-space: nowrap keeps the progress text
+   itself from wrapping mid-count once it has its own line. */
 .alm-scan-progress {
-	margin-left: 8px;
+	display: block;
+	margin: 6px 0 0;
 	color: #646970;
+	white-space: nowrap;
 }
 
 .alm-links-table td,
@@ -211,7 +221,40 @@
    Domains, Expand Shortened Links), all the same shape -- rides on
    wp-admin's own native .widefat/.striped table styling (the same
    convention Site Health/WooCommerce Status use for exactly this kind
-   of "operation + its own last result" list), not a hand-rolled look. */
+   of "operation + its own last result" list), not a hand-rolled look.
+   table-layout: fixed with explicit column widths, not auto -- without
+   it, a long "Last run" delta or in-progress count in the action
+   column pulls width away from whichever column has the least content
+   at that moment (the browser's default auto-layout redistributes
+   column widths based on every cell's content, all at once), which is
+   exactly what caused the Last run column to wrap mid-sentence the
+   instant the action column's progress text grew long. Fixed widths
+   mean every column keeps its own space regardless of what any other
+   cell is doing. */
+.alm-tasks-table {
+	table-layout: fixed;
+}
+
+.alm-tasks-table th:first-child,
+.alm-tasks-table td:first-child {
+	width: 42%;
+}
+
+.alm-tasks-table th:nth-child(2),
+.alm-tasks-table td:nth-child(2) {
+	width: 18%;
+}
+
+.alm-tasks-table th:nth-child(3),
+.alm-tasks-table td:nth-child(3) {
+	width: 10%;
+}
+
+.alm-tasks-table th:last-child,
+.alm-tasks-table td:last-child {
+	width: 30%;
+}
+
 .alm-tasks-table td {
 	vertical-align: top;
 	padding-top: 12px;
