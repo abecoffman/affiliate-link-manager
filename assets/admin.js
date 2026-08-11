@@ -173,6 +173,8 @@
 		var contextField = document.getElementById( 'alm-edit-link-context' );
 		var providerDisplay = document.getElementById( 'alm-edit-link-provider-display' );
 		var urlInput = document.getElementById( 'alm-edit-link-url-input' );
+		var ignoreLink = document.getElementById( 'alm-edit-link-ignore' );
+		var deleteLink = document.getElementById( 'alm-edit-link-delete' );
 
 		var currentId = null;
 		var originalProviderId = null;
@@ -184,7 +186,13 @@
 		var matchRequestToken = 0;
 
 		var getFocusable = function () {
-			return modal.querySelectorAll( 'button, input, a[href]' );
+			// Filters out .hidden elements (e.g. the Ignore link, hidden
+			// when a link is already ignored) -- querySelectorAll() would
+			// otherwise still return them, letting focus land somewhere
+			// invisible on a Tab/Shift+Tab wrap-around.
+			return Array.prototype.filter.call( modal.querySelectorAll( 'button, input, a[href]' ), function ( el ) {
+				return ! el.hidden;
+			} );
 		};
 
 		var trapFocus = function ( event ) {
@@ -279,25 +287,40 @@
 			matchedProviderId = originalProviderId;
 
 			// The title itself is plain text, not a link -- "Edit Post"
-			// is its own explicit action right next to it instead
-			// (previously a separate row action on the Links screen,
-			// confusingly similar to this modal's own "Edit" action;
-			// moved here where it actually belongs, next to the post
-			// it's about).
+			// and "View" are their own explicit actions right next to it
+			// instead (both previously row actions on the Links screen,
+			// confusingly split across two different columns/entities;
+			// moved here where they actually belong, next to the post
+			// they're about).
 			postField.textContent = '';
 			postField.appendChild( document.createTextNode( link.getAttribute( 'data-post-title' ) ) );
 
-			var postEditUrl = link.getAttribute( 'data-post-edit-url' );
-			if ( postEditUrl ) {
+			var postLinks = [
+				{ url: link.getAttribute( 'data-post-edit-url' ), label: almAdmin.strings.editPost },
+				{ url: link.getAttribute( 'data-view-url' ), label: almAdmin.strings.view },
+			];
+			var renderedAPostLink = false;
+			postLinks.forEach( function ( entry ) {
+				if ( ! entry.url ) {
+					return;
+				}
+				postField.appendChild( document.createTextNode( renderedAPostLink ? ' | ' : ' ' ) );
 				var postLink = document.createElement( 'a' );
-				postLink.href = postEditUrl;
+				postLink.href = entry.url;
 				postLink.target = '_blank';
 				postLink.rel = 'noopener noreferrer';
-				postLink.className = 'alm-modal-edit-post-link';
-				postLink.textContent = almAdmin.strings.editPost;
-				postField.appendChild( document.createTextNode( ' ' ) );
+				postLink.className = 'alm-modal-post-link';
+				postLink.textContent = entry.label;
 				postField.appendChild( postLink );
-			}
+				renderedAPostLink = true;
+			} );
+
+			// Ignore/Delete: real nonce'd links, same
+			// ALM_Links_List_Table::row_action_url() URLs the old row
+			// actions used -- only where they're rendered changed.
+			ignoreLink.href = link.getAttribute( 'data-ignore-url' );
+			ignoreLink.hidden = 'ignored' === link.getAttribute( 'data-status' );
+			deleteLink.href = link.getAttribute( 'data-delete-url' );
 
 			providerDisplay.textContent = originalProviderLabel;
 			urlInput.value = originalUrl;
@@ -357,6 +380,18 @@
 		urlInput.addEventListener( 'input', scheduleProviderMatch );
 
 		cancelButton.addEventListener( 'click', closeModal );
+
+		// Ignore is a plain nonce'd link (real navigation, same as it
+		// always was as a row action) -- no confirm needed, matching its
+		// prior behavior exactly. Delete keeps its confirm gate, just as
+		// a real click handler now instead of an inline onclick
+		// attribute (simpler now that this is JS-rendered, not
+		// server-rendered per row).
+		deleteLink.addEventListener( 'click', function ( event ) {
+			if ( ! window.confirm( almAdmin.strings.deleteConfirm ) ) {
+				event.preventDefault();
+			}
+		} );
 
 		modal.addEventListener( 'click', function ( event ) {
 			if ( event.target === modal ) {

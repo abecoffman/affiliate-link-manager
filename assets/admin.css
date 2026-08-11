@@ -243,12 +243,11 @@ table.alm_posts .column-breakdown {
 	word-break: break-all;
 }
 
-/* "Edit Post" next to the post title -- a secondary action, not the
-   main point of this row, same visual weight as WP core's own
+/* "Edit Post"/"View" next to the post title -- secondary actions, not
+   the main point of this row, same visual weight as WP core's own
    .row-actions links (small, not competing with the title itself). */
-.alm-modal-edit-post-link {
+.alm-modal-post-link {
 	font-size: 12px;
-	margin-left: 4px;
 }
 
 /* The Link text snippet -- before/anchor/after, mirroring how the link
@@ -271,11 +270,6 @@ table.alm_posts .column-breakdown {
 	font-size: 12px;
 }
 
-.alm-modal-help {
-	color: #646970;
-	font-size: 13px;
-}
-
 .alm-modal-error {
 	background: #fcf0f1;
 	border-left: 4px solid #d63638;
@@ -283,9 +277,31 @@ table.alm_posts .column-breakdown {
 	color: #d63638;
 }
 
+/* Ignore/Delete (left) vs. Cancel/Save (right) -- deliberately kept
+   apart: Ignore/Delete are a different kind of action (dismiss/remove
+   the tracked record entirely) than the URL-editing flow Cancel/Save
+   belong to, not just two more buttons in the same row. */
 .alm-modal-actions {
 	display: flex;
-	justify-content: flex-end;
+	justify-content: space-between;
+	align-items: center;
 	gap: 8px;
 	margin-top: 20px;
+}
+
+.alm-modal-actions-primary {
+	display: flex;
+	gap: 8px;
+}
+
+.alm-modal-text-action {
+	font-size: 13px;
+}
+
+.alm-modal-text-action + .alm-modal-text-action {
+	margin-left: 12px;
+}
+
+.alm-modal-text-action-danger {
+	color: #d63638;
 }

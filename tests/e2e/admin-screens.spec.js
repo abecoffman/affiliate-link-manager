@@ -162,13 +162,13 @@ test.describe('Affiliate Links admin screens', () => {
 	/**
 	 * Regression guard for the redesigned table (Post | Link | Affiliate
 	 * | URL, no Status/Last seen column, no separate Posts screen): the
-	 * Post cell's own title links straight to the post editor and
-	 * carries View/Ignore/Delete as row actions; there is no "Edit" or
-	 * "Edit Post" row action at all -- clicking the Link cell's own
-	 * text is what opens the URL-editing modal, and "Edit Post" lives
-	 * only inside that modal, next to the post title.
+	 * Post cell's title links straight to the post editor, but has no
+	 * row actions at all now -- Edit, View, Ignore, and Delete all live
+	 * inside the Edit modal instead (per explicit feedback that they
+	 * didn't make sense split across two different columns anymore).
+	 * Clicking the Link cell's own text is what opens that modal.
 	 */
-	test('Links screen has no separate Edit/Edit Post row actions -- the Link cell itself opens the modal', async ({ page }) => {
+	test('Links screen has no row actions at all -- Edit/View/Ignore/Delete all live inside the modal', async ({ page }) => {
 		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
 
 		const row = page.getByRole('row', { name: /a very long product name/ });
@@ -177,12 +177,17 @@ test.describe('Affiliate Links admin screens', () => {
 
 		await expect(row.getByRole('link', { name: 'Edit Post', exact: true })).toHaveCount(0);
 		await expect(row.getByRole('link', { name: 'Edit', exact: true })).toHaveCount(0);
-		await expect(row.getByRole('link', { name: 'View', exact: true })).toBeVisible();
+		await expect(row.getByRole('link', { name: 'View', exact: true })).toHaveCount(0);
+		await expect(row.getByRole('link', { name: 'Ignore', exact: true })).toHaveCount(0);
+		await expect(row.getByRole('link', { name: 'Delete', exact: true })).toHaveCount(0);
 
 		await row.getByRole('link', { name: /a very long product name/ }).click();
 		const modal = page.locator('#alm-edit-link-modal');
 		await expect(modal).toBeVisible();
 		await expect(modal.getByRole('link', { name: 'Edit Post', exact: true })).toBeVisible();
+		await expect(modal.getByRole('link', { name: 'View', exact: true })).toBeVisible();
+		await expect(modal.locator('#alm-edit-link-ignore')).toBeVisible();
+		await expect(modal.locator('#alm-edit-link-delete')).toBeVisible();
 	});
 
 	/**

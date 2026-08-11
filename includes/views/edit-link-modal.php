@@ -11,6 +11,14 @@
  * it, never a manual choice. See ALM_Link_Converter::save_url() and
  * ALM_Admin::handle_match_provider().
  *
+ * Also carries every other per-link action (View, Ignore, Delete) --
+ * moved here from the Links table's row actions per explicit feedback
+ * that they didn't make sense split across two different columns
+ * anymore. Edit Post/View are secondary links next to the post title;
+ * Ignore/Delete are secondary actions in the footer, deliberately kept
+ * apart from Cancel/Save (a different kind of action, not part of the
+ * same URL-editing flow).
+ *
  * @package ALM
  */
 
@@ -40,8 +48,14 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<p id="alm-edit-link-error" class="alm-modal-error" hidden></p>
 
 		<div class="alm-modal-actions">
-			<button type="button" id="alm-edit-link-cancel" class="button"><?php esc_html_e( 'Cancel', 'affiliate-link-manager' ); ?></button>
-			<button type="button" id="alm-edit-link-save" class="button button-primary"></button>
+			<div class="alm-modal-actions-secondary">
+				<a href="#" id="alm-edit-link-ignore" class="alm-modal-text-action"><?php esc_html_e( 'Ignore', 'affiliate-link-manager' ); ?></a>
+				<a href="#" id="alm-edit-link-delete" class="alm-modal-text-action alm-modal-text-action-danger"><?php esc_html_e( 'Delete', 'affiliate-link-manager' ); ?></a>
+			</div>
+			<div class="alm-modal-actions-primary">
+				<button type="button" id="alm-edit-link-cancel" class="button"><?php esc_html_e( 'Cancel', 'affiliate-link-manager' ); ?></button>
+				<button type="button" id="alm-edit-link-save" class="button button-primary"></button>
+			</div>
 		</div>
 	</div>
 </div>

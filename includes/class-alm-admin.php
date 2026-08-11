@@ -170,10 +170,12 @@ class ALM_Admin {
 					'checkDomains'     => __( 'Check Domains', 'affiliate-link-manager' ),
 					'editModalTitle'   => __( 'Edit link', 'affiliate-link-manager' ),
 					'editPost'         => __( 'Edit Post', 'affiliate-link-manager' ),
+					'view'             => __( 'View', 'affiliate-link-manager' ),
 					'save'             => __( 'Save', 'affiliate-link-manager' ),
 					'saving'           => __( 'Saving…', 'affiliate-link-manager' ),
 					'cancel'           => __( 'Cancel', 'affiliate-link-manager' ),
 					'matching'         => __( 'Checking…', 'affiliate-link-manager' ),
+					'deleteConfirm'    => __( "Delete this link? This only removes it from Affiliate Link Manager's records -- it does not change the post.", 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
 					'forceConvertWarn' => __( 'This link is currently tracked under %s. Saving will replace it -- are you sure?', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "ShopMy" */

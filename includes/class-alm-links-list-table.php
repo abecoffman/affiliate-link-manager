@@ -558,81 +558,33 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
-	 * On this WP core version, row_actions() (called below, from
-	 * column_post()) already appends its own "Show more details"
-	 * toggle-row button as part of its return value -- but
-	 * single_row_columns() *also* unconditionally appends one of its own
-	 * for the primary column via this method, producing two identical
-	 * buttons in the same cell. Confirmed by diffing raw server-rendered
-	 * HTML (not just the live DOM) against WP core's own
-	 * class-wp-list-table.php source -- both row_actions() and
-	 * handle_row_actions() independently emit the button. Deferring
-	 * entirely to row_actions()'s own copy here, rather than trying to
-	 * suppress it there (that method belongs to WP core, not this
-	 * plugin). row_actions() itself doesn't care which column calls it
-	 * (confirmed against WP core's own source, not just observed
-	 * behavior) -- it always appends the toggle button, and WP core's
-	 * hover-to-reveal CSS for .row-actions is scoped to `tr:hover`, not
-	 * `.column-primary`, so calling it from column_post() rather than
-	 * this row's actual primary column works identically either way.
-	 *
-	 * @param object|array $item
-	 * @param string       $column_name
-	 * @param string       $primary
-	 * @return string
-	 */
-	protected function handle_row_actions( $item, $column_name, $primary ) {
-		return '';
-	}
-
-	/**
-	 * Primary column: the post title, linking straight to its editor --
-	 * carries this row's row_actions() (View, Ignore, Delete). "Edit"
-	 * is deliberately not one of these: that's the Link column's own
-	 * job now (clicking the link text itself opens the URL-editing
-	 * modal), not a separate row action underneath a different column.
+	 * Primary column: the post title, linking straight to its editor.
+	 * No row_actions() here on purpose -- View/Ignore/Delete used to
+	 * live here as hover-revealed row actions, but per explicit
+	 * feedback ("these commands don't really make sense here anymore")
+	 * they've all moved into the Edit modal itself (see column_link()'s
+	 * data-view-url/data-ignore-url/data-delete-url and
+	 * assets/admin.js). No handle_row_actions() override either, for
+	 * the same reason it existed before is now moot: that override
+	 * used to suppress WP core's own default toggle-row-button
+	 * behavior for the primary column, needed only because this method
+	 * *also* called row_actions() (which appends its own copy of that
+	 * button unconditionally) -- two buttons, one row. With no manual
+	 * row_actions() call left in this column at all, WP core's own
+	 * default handle_row_actions() (unoverridden) adds exactly one
+	 * toggle-row button for the primary column, correctly, on its own.
 	 *
 	 * @param array $item
 	 * @return string
 	 */
 	public function column_post( $item ) {
-		$title      = get_the_title( $item['post_id'] );
-		$title      = $title ? $title : '#' . $item['post_id'];
-		$edit_link  = get_edit_post_link( $item['post_id'], 'raw' );
-		$title_cell = $edit_link
+		$title     = get_the_title( $item['post_id'] );
+		$title     = $title ? $title : '#' . $item['post_id'];
+		$edit_link = get_edit_post_link( $item['post_id'], 'raw' );
+
+		return $edit_link
 			? sprintf( '<a href="%s">%s</a>', esc_url( $edit_link ), esc_html( $title ) )
 			: esc_html( $title );
-
-		$actions = array();
-
-		$view_link = get_permalink( $item['post_id'] );
-		if ( $view_link ) {
-			$actions['view'] = sprintf( '<a href="%s" target="_blank" rel="noopener noreferrer">%s</a>', esc_url( $view_link ), esc_html__( 'View', 'affiliate-link-manager' ) );
-		}
-
-		if ( ALM_Install::STATUS_IGNORED !== $item['status'] ) {
-			$actions['ignore'] = sprintf( '<a href="%s">%s</a>', esc_url( $this->row_action_url( 'ignore', $item['id'] ) ), esc_html__( 'Ignore', 'affiliate-link-manager' ) );
-		}
-
-		// esc_attr() on the JSON string is load-bearing, not decorative:
-		// wp_json_encode() delimits with double quotes, and this whole
-		// thing sits inside an onclick="..." attribute that also uses
-		// double quotes. Without escaping, the attribute value ends at
-		// the JSON string's own opening quote, and everything after
-		// that -- including "Manager's" own apostrophe once the parser
-		// is already out of sync -- gets parsed as garbage bare
-		// attributes, corrupting this element and, in the browser's
-		// error-recovery parsing, cascading into duplicated markup
-		// later in the row (confirmed live: two toggle-row buttons
-		// instead of one, downstream of this exact corruption).
-		$actions['delete'] = sprintf(
-			'<a href="%s" class="submitdelete" onclick="return confirm(%s);">%s</a>',
-			esc_url( $this->row_action_url( 'delete', $item['id'] ) ),
-			esc_attr( wp_json_encode( __( 'Delete this link? This only removes it from Affiliate Link Manager\'s records -- it does not change the post.', 'affiliate-link-manager' ) ) ),
-			esc_html__( 'Delete', 'affiliate-link-manager' )
-		);
-
-		return $title_cell . $this->row_actions( $actions );
 	}
 
 	/**
@@ -646,19 +598,31 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * click handler, not a real link: this never navigates, same as WP
 	 * core's own inline-edit actions.
 	 *
+	 * View/Ignore/Delete are also carried here as data-*-url attributes
+	 * now, not rendered as row actions anywhere -- they live inside the
+	 * modal itself (per explicit feedback that they didn't make sense
+	 * as row actions once Post/Link split the way they did). Reuses the
+	 * exact same nonce'd row_action_url() links the old row actions
+	 * used; only where they're rendered changed, not how they work.
+	 *
 	 * @param array $item
 	 * @return string
 	 */
 	public function column_link( $item ) {
 		$edit_link    = get_edit_post_link( $item['post_id'], 'raw' );
+		$view_link    = get_permalink( $item['post_id'] );
 		$provider_obj = $this->providers->get_provider( $item['provider'] );
 		$context      = $this->get_link_context( $item );
 
 		return sprintf(
-			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-url="%4$s" data-anchor="%5$s" data-provider="%6$s" data-provider-label="%7$s" data-context-before="%8$s" data-context-after="%9$s">%10$s</a>',
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-view-url="%4$s" data-ignore-url="%5$s" data-delete-url="%6$s" data-status="%7$s" data-url="%8$s" data-anchor="%9$s" data-provider="%10$s" data-provider-label="%11$s" data-context-before="%12$s" data-context-after="%13$s">%14$s</a>',
 			(int) $item['id'],
 			esc_attr( get_the_title( $item['post_id'] ) ),
 			esc_attr( $edit_link ? $edit_link : '' ),
+			esc_attr( $view_link ? $view_link : '' ),
+			esc_attr( $this->row_action_url( 'ignore', $item['id'] ) ),
+			esc_attr( $this->row_action_url( 'delete', $item['id'] ) ),
+			esc_attr( $item['status'] ),
 			esc_attr( $item['url'] ),
 			esc_attr( $item['anchor_text'] ),
 			esc_attr( $item['provider'] ),
