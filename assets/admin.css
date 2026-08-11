@@ -124,8 +124,8 @@
 
 /* Deliberately not the same blue as .alm-badge-shopmy -- a "Candidate"
    status badge and a "ShopMy" provider badge can appear right next to
-   each other (e.g. the Posts screen's breakdown chip row) and need to
-   read as different things at a glance. */
+   each other (e.g. the Dashboard's headline/sub-breakdown tables) and
+   need to read as different things at a glance. */
 .alm-badge-status-convertible {
 	background: #f0e6fb;
 	color: #6b3fa0;
@@ -193,15 +193,44 @@
 	margin: 16px 0;
 }
 
-/* Posts screen: several small badges per row (one per provider, plus
-   the stale flag) -- wrap and space them like a chip row rather than
-   letting them run together or overflow the column. table.alm_posts
-   comes from WP_List_Table's own get_table_classes(), which appends
-   the 'plural' constructor arg as a class -- not an id we set. */
-table.alm_posts .column-breakdown {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 4px;
+/* Maintenance card (Dashboard): Shortened links + Possible unrecognized
+   networks grouped together, one card, lower visual weight than
+   Overview -- see includes/views/dashboard.php. Each section gets a
+   hairline divider from the one before it, not just vertical spacing,
+   so it's clear they're sub-sections of one card rather than
+   independent content stacked inside it. */
+.alm-maintenance-section {
+	margin-top: 20px;
+	padding-top: 20px;
+	border-top: 1px solid #f0f0f1;
+}
+
+.alm-maintenance-section:first-of-type {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
+}
+
+.alm-maintenance-section h3 {
+	margin: 0 0 4px;
+}
+
+/* Possible unrecognized networks: informational only, no action button
+   -- deliberately quieter than the Affiliate Links sub-breakdown above
+   it, which every row of *is* actionable (click to filter). */
+.alm-network-signals {
+	font-size: 13px;
+	color: #646970;
+}
+
+/* Settings screen: "Networks" and "Scan behavior" are two sections of
+   one merged screen (used to be two separate top-level screens) inside
+   a single form/card -- a hairline divider marks the section boundary
+   the same way a new .alm-card used to. */
+.alm-card-header-secondary {
+	margin-top: 24px;
+	padding-top: 20px;
+	border-top: 1px solid #f0f0f1;
 }
 
 /* Edit-link modal (includes/views/edit-link-modal.php, driven by

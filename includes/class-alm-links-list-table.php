@@ -701,4 +701,24 @@ class ALM_Links_List_Table extends WP_List_Table {
 	public function column_default( $item, $column_name ) {
 		return isset( $item[ $column_name ] ) ? esc_html( $item[ $column_name ] ) : '';
 	}
+
+	/**
+	 * WP_List_Table's own default "No items found." is a dead end for a
+	 * brand-new install that's never run a scan -- points back at the
+	 * Dashboard's Run Scan action instead of just saying nothing was
+	 * found. A filtered/searched empty result also lands here (WP core
+	 * gives no_items() no way to distinguish the two cases either), but
+	 * a pointer back to the Dashboard is harmless noise in that case,
+	 * not actively misleading.
+	 *
+	 * @return void
+	 */
+	public function no_items() {
+		printf(
+			/* translators: 1: opening <a> tag to the Dashboard screen, 2: closing </a> tag */
+			esc_html__( 'No links found yet. Head to the %1$sDashboard%2$s to run your first scan.', 'affiliate-link-manager' ),
+			'<a href="' . esc_url( admin_url( 'admin.php?page=' . ALM_Admin::MENU_SLUG ) ) . '">', // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- esc_url() applied above; this is a fixed, self-authored anchor tag, not user input.
+			'</a>' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- fixed closing tag, not user input.
+		);
+	}
 }

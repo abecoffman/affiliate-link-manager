@@ -1,10 +1,9 @@
 <?php
 /**
  * Admin UI controller: registers the top-level "Affiliate Links" menu
- * and its screens (Dashboard, Links, Providers, Settings -- no
- * separate Posts screen, see register_menu()), and handles the AJAX
- * scan-batch endpoint plus the plain POST-and-redirect settings/
- * provider forms.
+ * and its screens (Dashboard, Links, Settings -- no separate Posts or
+ * Providers screen, see register_menu()), and handles the AJAX
+ * scan-batch endpoint plus the plain POST-and-redirect settings form.
  *
  * @package ALM
  */
@@ -22,7 +21,6 @@ class ALM_Admin {
 	const AJAX_EXPAND_SHORTENER_ACTION = 'alm_expand_shorteners_batch';
 	const NONCE_ACTION                 = 'alm_admin';
 	const SETTINGS_NONCE               = 'alm_settings';
-	const PROVIDERS_NONCE              = 'alm_providers';
 	const CAPABILITY                   = 'manage_options';
 
 	const MENU_SLUG = 'affiliate-links';
@@ -125,14 +123,10 @@ class ALM_Admin {
 		// which links) that screen existed for. Removed rather than kept
 		// as a second, mostly-overlapping way to see the same thing.
 
-		add_submenu_page(
-			self::MENU_SLUG,
-			__( 'Providers', 'affiliate-link-manager' ),
-			__( 'Providers', 'affiliate-link-manager' ),
-			self::CAPABILITY,
-			self::MENU_SLUG . '-providers',
-			array( $this, 'render_providers' )
-		);
+		// No separate Providers screen either -- 5 of 6 registered
+		// networks have nothing to configure beyond "recognized," so a
+		// whole top-level menu item for that was mostly empty space.
+		// Folded into Settings instead (see render_settings()).
 
 		add_submenu_page(
 			self::MENU_SLUG,
@@ -370,13 +364,16 @@ class ALM_Admin {
 		if ( isset( $_POST['alm_settings_nonce'] ) && check_admin_referer( self::SETTINGS_NONCE, 'alm_settings_nonce' ) ) {
 			$this->save_settings();
 		}
-
-		if ( isset( $_POST['alm_providers_nonce'] ) && check_admin_referer( self::PROVIDERS_NONCE, 'alm_providers_nonce' ) ) {
-			$this->save_providers();
-		}
 	}
 
 	/**
+	 * Saves the whole (merged) Settings screen -- both the Networks
+	 * section (ShopMy's own fields; every other registered network is
+	 * classify-only with nothing to save) and the Scan behavior section
+	 * (excluded domains) -- in one submit, one nonce. Used to be two
+	 * separate forms/nonces/screens; see class docblock and
+	 * render_settings().
+	 *
 	 * @return void
 	 */
 	private function save_settings() {
@@ -384,11 +381,14 @@ class ALM_Admin {
 			return;
 		}
 
-		// Automation-policy toggles are stored now so the UI persists,
-		// but nothing reads them yet -- the actual automatic-linking
-		// engine is a later phase of this plugin, not this round.
-		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- the nonce was already verified in handle_settings_forms() before this method is called.
-		update_option( 'alm_auto_convert_unclassified', isset( $_POST['alm_auto_convert_unclassified'] ) ? '1' : '' );
+		// The nonce was already verified in handle_settings_forms() before this method is called.
+		if ( isset( $_POST['alm_shopmy_affiliate_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, sanitize_text_field( wp_unslash( $_POST['alm_shopmy_affiliate_id'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		}
+
+		if ( isset( $_POST['alm_shopmy_collection_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+			update_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID, sanitize_text_field( wp_unslash( $_POST['alm_shopmy_collection_id'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		}
 
 		// Read by ALM_Candidate_Classifier on every scan -- this is the
 		// site owner's own no-code way to teach it about domains only
@@ -403,31 +403,10 @@ class ALM_Admin {
 		exit;
 	}
 
-	/**
-	 * @return void
-	 */
-	private function save_providers() {
-		if ( ! current_user_can( self::CAPABILITY ) ) {
-			return;
-		}
-
-		// The nonce was already verified in handle_settings_forms() before this method is called.
-		if ( isset( $_POST['alm_shopmy_affiliate_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, sanitize_text_field( wp_unslash( $_POST['alm_shopmy_affiliate_id'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
-		}
-
-		if ( isset( $_POST['alm_shopmy_collection_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			update_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID, sanitize_text_field( wp_unslash( $_POST['alm_shopmy_collection_id'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
-		}
-
-		wp_safe_redirect( add_query_arg( 'updated', '1', wp_get_referer() ) );
-		exit;
-	}
-
 	public function render_dashboard() {
 		$stats              = $this->get_provider_stats();
 		$status_summary     = $this->get_status_summary();
-		$needs_attention    = $this->get_needs_attention_counts();
+		$stale_count        = $this->get_stale_count();
 		$scan_delta         = get_option( 'alm_last_scan_delta', array() );
 		$domain_check       = $this->get_domain_check_stats();
 		$network_signals    = $this->network_signal_scanner->scan();
@@ -441,7 +420,7 @@ class ALM_Admin {
 		require ALM_PATH . 'includes/views/links.php';
 	}
 
-	public function render_providers() {
+	public function render_settings() {
 		// ALM_Provider_Generic excluded -- it's the scanner's own
 		// always-matches fallback for "no real network recognized this
 		// URL," not a real network with settings to manage. Same gate
@@ -452,10 +431,6 @@ class ALM_Admin {
 				return ! ( $provider instanceof ALM_Provider_Generic );
 			}
 		);
-		require ALM_PATH . 'includes/views/providers.php';
-	}
-
-	public function render_settings() {
 		require ALM_PATH . 'includes/views/settings.php';
 	}
 
@@ -517,30 +492,22 @@ class ALM_Admin {
 	}
 
 	/**
-	 * Candidate and stale counts for the Dashboard's "Needs attention"
-	 * panel -- the two statuses that represent something an admin might
-	 * actually want to act on. Deliberately *not* plain "unclassified":
-	 * that bucket is mostly noise (internal nav, social icons, image
-	 * links) now that ALM_Candidate_Classifier splits the genuinely
-	 * promising links out into "convertible" -- surfacing the raw
-	 * unclassified count here would be exactly the noisy panel this was
-	 * built to avoid. Active/ignored don't belong here either: active is
-	 * fine as-is, ignored was already deliberately dismissed.
+	 * The Stale count shown as a third row on the Dashboard's headline
+	 * table, only when non-zero -- a link no longer found on the last
+	 * scan. Used to live in its own "Needs attention" card alongside a
+	 * repeat of the Candidate count already shown in the headline table;
+	 * folded into a single row here instead of two places saying the
+	 * same thing about Candidates.
 	 *
-	 * @return array<string,int>
+	 * @return int
 	 */
-	private function get_needs_attention_counts() {
+	private function get_stale_count() {
 		global $wpdb;
 		$table = ALM_Install::table_name();
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$rows      = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
-		$by_status = wp_list_pluck( $rows, 'total', 'status' );
-
-		return array(
-			ALM_Install::STATUS_CONVERTIBLE => isset( $by_status[ ALM_Install::STATUS_CONVERTIBLE ] ) ? (int) $by_status[ ALM_Install::STATUS_CONVERTIBLE ] : 0,
-			ALM_Install::STATUS_STALE       => isset( $by_status[ ALM_Install::STATUS_STALE ] ) ? (int) $by_status[ ALM_Install::STATUS_STALE ] : 0,
-		);
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE status = %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
+		return (int) $wpdb->get_var( $wpdb->prepare( $sql, ALM_Install::STATUS_STALE ) );
 	}
 
 	/**

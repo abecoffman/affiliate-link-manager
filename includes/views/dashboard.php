@@ -2,15 +2,24 @@
 /**
  * Dashboard screen: the three-tier headline (Affiliate Links / Candidate
  * Affiliate Links / Other Outbound Links -- the last one deliberately
- * just a summary number, never a browsable list), a per-network
- * sub-breakdown for real Affiliate Links, a "Needs attention" panel,
- * the last-scan delta, and the Run Scan / Check Domains controls.
+ * just a summary number, never a browsable list) plus a Stale row when
+ * there's anything to flag, a per-network sub-breakdown for real
+ * Affiliate Links, the last-scan delta, and the Run Scan control --
+ * followed by the lower-weight maintenance cards (Domain content check,
+ * Shortened links, Possible unrecognized networks). Only Run Scan is
+ * styled button-primary; the maintenance actions are deliberately plain
+ * buttons -- they support the core scan/classify loop, they aren't it.
+ *
+ * A standalone "Needs attention" card used to repeat the Candidate
+ * count already shown in the headline table above -- folded away in
+ * favor of a single Stale row here instead of two cards saying the same
+ * thing.
  *
  * @package ALM
  *
  * @var array<string,array{label:string,count:int}> $stats
  * @var array<string,int>                            $status_summary
- * @var array<string,int>                            $needs_attention
+ * @var int                                           $stale_count
  * @var array{new_links?:int,now_stale?:int}          $scan_delta
  * @var array{checked:int,pending:int,confirmed_shops:int,confirmed_noise:int} $domain_check
  * @var array<string,array{label:string,count:int,sample_url:string}> $network_signals
@@ -83,6 +92,16 @@ $last_scan = get_option( 'alm_last_scan_time', '' );
 					</td>
 					<td><?php echo esc_html( $status_summary[ ALM_Install::STATUS_CONVERTIBLE ] ); ?></td>
 				</tr>
+				<?php if ( $stale_count > 0 ) : ?>
+					<tr>
+						<td>
+							<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_STALE ) ) ); ?>">
+								<span class="alm-badge alm-badge-status-stale"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_STALE, true ) ); ?></span>
+							</a>
+						</td>
+						<td><?php echo esc_html( $stale_count ); ?></td>
+					</tr>
+				<?php endif; ?>
 			</tbody>
 		</table>
 
@@ -120,40 +139,6 @@ $last_scan = get_option( 'alm_last_scan_time', '' );
 		</p>
 	</div>
 
-	<?php if ( $needs_attention[ ALM_Install::STATUS_CONVERTIBLE ] > 0 || $needs_attention[ ALM_Install::STATUS_STALE ] > 0 ) : ?>
-		<div class="alm-card">
-			<div class="alm-card-header">
-				<h2><?php esc_html_e( 'Needs attention', 'affiliate-link-manager' ); ?></h2>
-				<p class="alm-card-lede"><?php esc_html_e( 'Likely affiliate-link opportunities, and links no longer found on the last scan -- not the full Other Outbound Links pile, which is mostly navigation and social noise.', 'affiliate-link-manager' ); ?></p>
-			</div>
-
-			<table class="alm-provider-breakdown">
-				<tbody>
-					<?php if ( $needs_attention[ ALM_Install::STATUS_CONVERTIBLE ] > 0 ) : ?>
-						<tr>
-							<td>
-								<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_CONVERTIBLE ) ) ); ?>">
-									<span class="alm-badge alm-badge-status-convertible"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_CONVERTIBLE, true ) ); ?></span>
-								</a>
-							</td>
-							<td><?php echo esc_html( $needs_attention[ ALM_Install::STATUS_CONVERTIBLE ] ); ?></td>
-						</tr>
-					<?php endif; ?>
-					<?php if ( $needs_attention[ ALM_Install::STATUS_STALE ] > 0 ) : ?>
-						<tr>
-							<td>
-								<a href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_STALE ) ) ); ?>">
-									<span class="alm-badge alm-badge-status-stale"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_STALE ) ); ?></span>
-								</a>
-							</td>
-							<td><?php echo esc_html( $needs_attention[ ALM_Install::STATUS_STALE ] ); ?></td>
-						</tr>
-					<?php endif; ?>
-				</tbody>
-			</table>
-		</div>
-	<?php endif; ?>
-
 	<div class="alm-card">
 		<div class="alm-card-header">
 			<h2><?php esc_html_e( 'Domain content check', 'affiliate-link-manager' ); ?></h2>
@@ -180,7 +165,7 @@ $last_scan = get_option( 'alm_last_scan_time', '' );
 
 		<?php if ( $domain_check['pending'] > 0 ) : ?>
 			<p>
-				<button type="button" class="button button-primary" id="alm-check-domains">
+				<button type="button" class="button" id="alm-check-domains">
 					<?php
 					printf(
 						/* translators: %d: number of domains waiting to be checked */
@@ -196,45 +181,50 @@ $last_scan = get_option( 'alm_last_scan_time', '' );
 		<?php endif; ?>
 	</div>
 
-	<?php if ( $shorteners_pending > 0 ) : ?>
+	<?php if ( $shorteners_pending > 0 || ! empty( $network_signals ) ) : ?>
 		<div class="alm-card">
 			<div class="alm-card-header">
-				<h2><?php esc_html_e( 'Shortened links', 'affiliate-link-manager' ); ?></h2>
-				<p class="alm-card-lede"><?php esc_html_e( 'A URL shortener (bit.ly, etsy.me, ...) reveals nothing about its destination from the link itself. This follows each one\'s real redirect and reclassifies it based on where it actually goes -- a confirmed match against a known network is tracked automatically; a confirmed-dead shortlink is marked stale instead of left looking like an untouched opportunity.', 'affiliate-link-manager' ); ?></p>
+				<h2><?php esc_html_e( 'Maintenance', 'affiliate-link-manager' ); ?></h2>
+				<p class="alm-card-lede"><?php esc_html_e( 'Background checks that keep link classifications accurate over time -- not part of the core scan loop, but worth running periodically.', 'affiliate-link-manager' ); ?></p>
 			</div>
 
-			<p>
-				<button type="button" class="button button-primary" id="alm-expand-shorteners">
-					<?php
-					printf(
-						/* translators: %d: number of shortened links waiting to be expanded */
-						esc_html__( 'Expand Shortened Links (%d pending)', 'affiliate-link-manager' ),
-						(int) $shorteners_pending
-					);
-					?>
-				</button>
-				<span id="alm-expand-shorteners-progress" class="alm-scan-progress" hidden></span>
-			</p>
-		</div>
-	<?php endif; ?>
+			<?php if ( $shorteners_pending > 0 ) : ?>
+				<div class="alm-maintenance-section">
+					<h3><?php esc_html_e( 'Shortened links', 'affiliate-link-manager' ); ?></h3>
+					<p class="alm-card-lede"><?php esc_html_e( 'A URL shortener (bit.ly, etsy.me, ...) reveals nothing about its destination from the link itself. This follows each one\'s real redirect and reclassifies it based on where it actually goes -- a confirmed match against a known network is tracked automatically; a confirmed-dead shortlink is marked stale instead of left looking like an untouched opportunity.', 'affiliate-link-manager' ); ?></p>
 
-	<?php if ( ! empty( $network_signals ) ) : ?>
-		<div class="alm-card">
-			<div class="alm-card-header">
-				<h2><?php esc_html_e( 'Possible unrecognized networks', 'affiliate-link-manager' ); ?></h2>
-				<p class="alm-card-lede"><?php esc_html_e( 'Links through a redirect domain known to belong to a real affiliate network this plugin does not have a provider for yet (see ALM_Network_Signal_Scanner) -- worth building support for, the same way ShopMy, RewardStyle, Amazon, CJ, Rakuten, and ShopStyle already are.', 'affiliate-link-manager' ); ?></p>
-			</div>
+					<p>
+						<button type="button" class="button" id="alm-expand-shorteners">
+							<?php
+							printf(
+								/* translators: %d: number of shortened links waiting to be expanded */
+								esc_html__( 'Expand Shortened Links (%d pending)', 'affiliate-link-manager' ),
+								(int) $shorteners_pending
+							);
+							?>
+						</button>
+						<span id="alm-expand-shorteners-progress" class="alm-scan-progress" hidden></span>
+					</p>
+				</div>
+			<?php endif; ?>
 
-			<table class="alm-provider-breakdown">
-				<tbody>
-					<?php foreach ( $network_signals as $signal_domain => $signal ) : ?>
-						<tr>
-							<td><?php echo esc_html( $signal['label'] ); ?> (<?php echo esc_html( $signal_domain ); ?>)</td>
-							<td><?php echo esc_html( $signal['count'] ); ?></td>
-						</tr>
-					<?php endforeach; ?>
-				</tbody>
-			</table>
+			<?php if ( ! empty( $network_signals ) ) : ?>
+				<div class="alm-maintenance-section">
+					<h3><?php esc_html_e( 'Possible unrecognized networks', 'affiliate-link-manager' ); ?></h3>
+					<p class="alm-card-lede"><?php esc_html_e( 'Some links go through a redirect domain that belongs to a real affiliate network this plugin doesn\'t recognize yet. There\'s nothing to do here directly -- worth passing along if you\'d like one of these added.', 'affiliate-link-manager' ); ?></p>
+
+					<table class="alm-provider-breakdown alm-network-signals">
+						<tbody>
+							<?php foreach ( $network_signals as $signal_domain => $signal ) : ?>
+								<tr>
+									<td><?php echo esc_html( $signal['label'] ); ?> (<?php echo esc_html( $signal_domain ); ?>)</td>
+									<td><?php echo esc_html( $signal['count'] ); ?></td>
+								</tr>
+							<?php endforeach; ?>
+						</tbody>
+					</table>
+				</div>
+			<?php endif; ?>
 		</div>
 	<?php endif; ?>
 </div>

@@ -98,10 +98,12 @@ test.describe('Affiliate Links admin screens', () => {
 		wp(['option', 'update', 'alm_shopmy_affiliate_id', 'sDXyBS']);
 	});
 
+	// No separate Providers screen -- folded into Settings (see
+	// includes/views/settings.php); this list mirrors the current
+	// top-level menu (Dashboard, Links, Settings) exactly, on purpose.
 	const screens = [
 		{ name: 'Dashboard', path: '/wp-admin/admin.php?page=affiliate-links', heading: 'Affiliate Links' },
 		{ name: 'Links', path: '/wp-admin/admin.php?page=affiliate-links-links', heading: 'Affiliate Links' },
-		{ name: 'Providers', path: '/wp-admin/admin.php?page=affiliate-links-providers', heading: 'Affiliate Links' },
 		{ name: 'Settings', path: '/wp-admin/admin.php?page=affiliate-links-settings', heading: 'Affiliate Links' },
 	];
 
