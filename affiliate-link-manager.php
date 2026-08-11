@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.13.0
+ * Version:     1.14.1
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.13.0' );
+define( 'ALM_VERSION', '1.14.1' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -45,6 +45,7 @@ require_once ALM_PATH . 'includes/class-alm-link-converter.php';
 require_once ALM_PATH . 'includes/class-alm-network-signal-scanner.php';
 require_once ALM_PATH . 'includes/class-alm-shortener-resolver.php';
 require_once ALM_PATH . 'includes/class-alm-shortener-scanner.php';
+require_once ALM_PATH . 'includes/class-alm-thumbnail-fetcher.php';
 require_once ALM_PATH . 'includes/class-alm-admin.php';
 
 register_activation_hook( __FILE__, array( 'ALM_Install', 'activate' ) );
@@ -89,11 +90,12 @@ function alm_init() {
 	$network_signal_scanner = new ALM_Network_Signal_Scanner();
 	$shortener_resolver     = new ALM_Shortener_Resolver();
 	$shortener_scanner      = new ALM_Shortener_Scanner( $shortener_resolver, $providers );
+	$thumbnail_fetcher      = new ALM_Thumbnail_Fetcher();
 
 	if ( is_admin() ) {
 		require_once ALM_PATH . 'includes/class-alm-links-list-table.php';
 
-		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter, $network_signal_scanner, $shortener_scanner );
+		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter, $network_signal_scanner, $shortener_scanner, $thumbnail_fetcher );
 		$admin->init();
 	}
 }

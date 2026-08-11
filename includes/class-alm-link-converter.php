@@ -145,17 +145,32 @@ class ALM_Link_Converter {
 
 		$status = ( ALM_Install::STATUS_UNCLASSIFIED === $provider_id ) ? ALM_Install::STATUS_UNCLASSIFIED : ALM_Install::STATUS_ACTIVE;
 
+		$data   = array(
+			'url'      => $new_url,
+			'provider' => $provider_id,
+			'status'   => $status,
+		);
+		$format = array( '%s', '%s', '%s' );
+
+		// A product thumbnail cached against this link's *old*
+		// destination must never linger once the URL itself has
+		// actually changed (a manual URL edit, or wrap_url() building a
+		// new tracked link) -- the next Edit modal open re-fetches fresh
+		// for wherever this link points now. See ALM_Thumbnail_Fetcher.
+		if ( $new_url !== $item['url'] ) {
+			$data['thumbnail_url']        = null;
+			$data['thumbnail_fetched_at'] = null;
+			$format[]                     = '%s';
+			$format[]                     = '%s';
+		}
+
 		global $wpdb;
 		$table   = ALM_Install::table_name();
 		$updated = $wpdb->update(
 			$table,
-			array(
-				'url'      => $new_url,
-				'provider' => $provider_id,
-				'status'   => $status,
-			),
+			$data,
 			array( 'id' => (int) $item['id'] ),
-			array( '%s', '%s', '%s' ),
+			$format,
 			array( '%d' )
 		);
 

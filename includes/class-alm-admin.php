@@ -19,6 +19,7 @@ class ALM_Admin {
 	const AJAX_EDIT_LINK_ACTION        = 'alm_edit_link';
 	const AJAX_MATCH_PROVIDER_ACTION   = 'alm_match_provider';
 	const AJAX_EXPAND_SHORTENER_ACTION = 'alm_expand_shorteners_batch';
+	const AJAX_FETCH_THUMBNAIL_ACTION  = 'alm_fetch_thumbnail';
 	const NONCE_ACTION                 = 'alm_admin';
 	const SETTINGS_NONCE               = 'alm_settings';
 	const CAPABILITY                   = 'manage_options';
@@ -60,7 +61,12 @@ class ALM_Admin {
 	 */
 	private $shortener_scanner;
 
-	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner, ALM_Shortener_Scanner $shortener_scanner ) {
+	/**
+	 * @var ALM_Thumbnail_Fetcher
+	 */
+	private $thumbnail_fetcher;
+
+	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner, ALM_Shortener_Scanner $shortener_scanner, ALM_Thumbnail_Fetcher $thumbnail_fetcher ) {
 		$this->scanner                = $scanner;
 		$this->providers              = $providers;
 		$this->adapters               = $adapters;
@@ -68,6 +74,7 @@ class ALM_Admin {
 		$this->converter              = $converter;
 		$this->network_signal_scanner = $network_signal_scanner;
 		$this->shortener_scanner      = $shortener_scanner;
+		$this->thumbnail_fetcher      = $thumbnail_fetcher;
 	}
 
 	public function init() {
@@ -78,6 +85,7 @@ class ALM_Admin {
 		add_action( 'wp_ajax_' . self::AJAX_EDIT_LINK_ACTION, array( $this, 'handle_edit_link' ) );
 		add_action( 'wp_ajax_' . self::AJAX_MATCH_PROVIDER_ACTION, array( $this, 'handle_match_provider' ) );
 		add_action( 'wp_ajax_' . self::AJAX_EXPAND_SHORTENER_ACTION, array( $this, 'handle_expand_shorteners_batch' ) );
+		add_action( 'wp_ajax_' . self::AJAX_FETCH_THUMBNAIL_ACTION, array( $this, 'handle_fetch_thumbnail' ) );
 		add_action( 'admin_init', array( $this, 'handle_settings_forms' ) );
 	}
 
@@ -160,6 +168,7 @@ class ALM_Admin {
 				'editLinkAction'         => self::AJAX_EDIT_LINK_ACTION,
 				'matchProviderAction'    => self::AJAX_MATCH_PROVIDER_ACTION,
 				'expandShortenersAction' => self::AJAX_EXPAND_SHORTENER_ACTION,
+				'fetchThumbnailAction'   => self::AJAX_FETCH_THUMBNAIL_ACTION,
 				'nonce'                  => wp_create_nonce( self::NONCE_ACTION ),
 				'total'                  => $this->scanner->count_scannable_posts(),
 				'domainsTotal'           => $this->domain_scanner->count_domains_needing_check(),
@@ -286,6 +295,61 @@ class ALM_Admin {
 		$result          = $this->shortener_scanner->check_batch( 5, $is_first_of_run );
 
 		wp_send_json_success( $result );
+	}
+
+	/**
+	 * On-demand product-thumbnail fetch for the Edit modal's thumbnail
+	 * slot -- fired only the first time a given link's modal is opened
+	 * (ALM_Links_List_Table::column_link()'s data-thumbnail-fetched
+	 * attribute tells the JS whether this has already been attempted;
+	 * every later open renders straight from the cached
+	 * data-thumbnail-url with no request at all). Once attempted here,
+	 * never retried automatically even on a null result -- same
+	 * restraint ALM_Shortener_Scanner already applies to resolved_at.
+	 *
+	 * @return void
+	 */
+	public function handle_fetch_thumbnail() {
+		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'affiliate-link-manager' ) ), 403 );
+		}
+
+		$id = isset( $_POST['id'] ) ? absint( wp_unslash( $_POST['id'] ) ) : 0;
+		if ( ! $id ) {
+			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 400 );
+		}
+
+		global $wpdb;
+		$table = ALM_Install::table_name();
+		$sql   = "SELECT * FROM {$table} WHERE id = %d"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+		$item  = $wpdb->get_row( $wpdb->prepare( $sql, $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+
+		if ( ! $item ) {
+			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 404 );
+		}
+
+		// Already attempted (even if it found nothing) -- the row's own
+		// cached answer is the source of truth, not a fresh fetch.
+		if ( ! empty( $item['thumbnail_fetched_at'] ) ) {
+			wp_send_json_success( array( 'thumbnailUrl' => ! empty( $item['thumbnail_url'] ) ? $item['thumbnail_url'] : null ) );
+		}
+
+		$result = $this->thumbnail_fetcher->fetch( $item['url'] );
+
+		$wpdb->update(
+			$table,
+			array(
+				'thumbnail_url'        => $result['thumbnail_url'],
+				'thumbnail_fetched_at' => current_time( 'mysql' ),
+			),
+			array( 'id' => $id ),
+			array( '%s', '%s' ),
+			array( '%d' )
+		);
+
+		wp_send_json_success( array( 'thumbnailUrl' => $result['thumbnail_url'] ) );
 	}
 
 	/**

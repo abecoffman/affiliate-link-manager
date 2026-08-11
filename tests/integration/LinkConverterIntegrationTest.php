@@ -298,6 +298,149 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'https://www.zara.com/product', $row['url'] );
 	}
 
+	/**
+	 * A product thumbnail cached against this link's *old* destination
+	 * must never linger once the URL itself actually changes -- see
+	 * ALM_Thumbnail_Fetcher and ALM_Link_Converter::write_and_persist().
+	 * The next Edit modal open re-fetches fresh for the new URL.
+	 */
+	public function test_save_url_clears_a_cached_thumbnail_when_the_url_actually_changes() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'              => $post_id,
+				'provider'             => 'unclassified',
+				'adapter'              => 'post_content',
+				'location'             => '0',
+				'url'                  => 'https://www.zara.com/product',
+				'anchor_text'          => 'tank top',
+				'status'               => 'convertible',
+				'thumbnail_url'        => 'https://cdn.zara.com/old-product-photo.jpg',
+				'thumbnail_fetched_at' => current_time( 'mysql' ),
+			)
+		);
+
+		$result = $this->converter->save_url( $item, 'https://www.zara.com/a-different-product' );
+		$this->assertTrue( $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertNull( $row['thumbnail_url'] );
+		$this->assertNull( $row['thumbnail_fetched_at'] );
+	}
+
+	/**
+	 * The inverse of the above: saving the *same* URL (a no-op edit, or
+	 * an admin who just clicked Save without changing anything) must
+	 * leave an already-cached thumbnail alone -- it's still correct for
+	 * a destination that hasn't changed.
+	 */
+	public function test_save_url_leaves_a_cached_thumbnail_alone_when_the_url_is_unchanged() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'              => $post_id,
+				'provider'             => 'unclassified',
+				'adapter'              => 'post_content',
+				'location'             => '0',
+				'url'                  => 'https://www.zara.com/product',
+				'anchor_text'          => 'tank top',
+				'status'               => 'convertible',
+				'thumbnail_url'        => 'https://cdn.zara.com/still-the-right-photo.jpg',
+				'thumbnail_fetched_at' => current_time( 'mysql' ),
+			)
+		);
+
+		$result = $this->converter->save_url( $item, 'https://www.zara.com/product' );
+		$this->assertTrue( $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertSame( 'https://cdn.zara.com/still-the-right-photo.jpg', $row['thumbnail_url'] );
+		$this->assertNotNull( $row['thumbnail_fetched_at'] );
+	}
+
+	/**
+	 * The bulk "Convert to [Provider]" path funnels through the same
+	 * write_and_persist() -- wrap_url() building a new tracked URL is
+	 * just as much a real URL change as a manually pasted one, so the
+	 * same reset must apply here too.
+	 */
+	public function test_convert_clears_a_cached_thumbnail_when_wrap_url_changes_the_url() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'              => $post_id,
+				'provider'             => 'unclassified',
+				'adapter'              => 'post_content',
+				'location'             => '0',
+				'url'                  => 'https://www.zara.com/product',
+				'anchor_text'          => 'tank top',
+				'status'               => 'convertible',
+				'thumbnail_url'        => 'https://cdn.zara.com/old-product-photo.jpg',
+				'thumbnail_fetched_at' => current_time( 'mysql' ),
+			)
+		);
+
+		$result = $this->converter->convert( $item, 'shopmy' );
+		$this->assertTrue( $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertNull( $row['thumbnail_url'] );
+		$this->assertNull( $row['thumbnail_fetched_at'] );
+	}
+
+	/**
+	 * A reclassify-only conversion (a non-wrapping provider like
+	 * RewardStyle) never touches the URL at all -- it must not touch
+	 * the cached thumbnail either, since reclassify() doesn't go
+	 * through write_and_persist() in the first place.
+	 */
+	public function test_convert_to_a_non_wrapping_provider_leaves_a_cached_thumbnail_alone() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.zara.com/product">tank top</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'              => $post_id,
+				'provider'             => 'unclassified',
+				'adapter'              => 'post_content',
+				'location'             => '0',
+				'url'                  => 'https://www.zara.com/product',
+				'anchor_text'          => 'tank top',
+				'status'               => 'convertible',
+				'thumbnail_url'        => 'https://cdn.zara.com/still-the-right-photo.jpg',
+				'thumbnail_fetched_at' => current_time( 'mysql' ),
+			)
+		);
+
+		$result = $this->converter->convert( $item, 'rewardstyle' );
+		$this->assertTrue( $result );
+
+		$row = $this->get_link_row( $item['id'] );
+		$this->assertSame( 'https://cdn.zara.com/still-the-right-photo.jpg', $row['thumbnail_url'] );
+	}
+
 	public function test_convert_to_an_unknown_provider_returns_an_error() {
 		$post_id = self::factory()->post->create(
 			array(

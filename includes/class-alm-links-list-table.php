@@ -622,7 +622,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$context      = $this->get_link_context( $item );
 
 		return sprintf(
-			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-view-url="%4$s" data-ignore-url="%5$s" data-delete-url="%6$s" data-status="%7$s" data-url="%8$s" data-resolved-url="%9$s" data-anchor="%10$s" data-provider="%11$s" data-provider-label="%12$s" data-context-before="%13$s" data-context-after="%14$s">%15$s</a>',
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-view-url="%4$s" data-ignore-url="%5$s" data-delete-url="%6$s" data-status="%7$s" data-url="%8$s" data-resolved-url="%9$s" data-anchor="%10$s" data-provider="%11$s" data-provider-label="%12$s" data-context-before="%13$s" data-context-after="%14$s" data-thumbnail-url="%15$s" data-thumbnail-fetched="%16$s">%17$s</a>',
 			(int) $item['id'],
 			esc_attr( get_the_title( $item['post_id'] ) ),
 			esc_attr( $edit_link ? $edit_link : '' ),
@@ -641,6 +641,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 			esc_attr( $provider_obj ? self::provider_display_label( $provider_obj ) : $item['provider'] ),
 			esc_attr( $context ? $context['before'] : '' ),
 			esc_attr( $context ? $context['after'] : '' ),
+			// Same per-link caching shape as resolved_url above, via
+			// ALM_Thumbnail_Fetcher -- data-thumbnail-fetched lets the JS
+			// tell "never attempted" (fetch on open) apart from "attempted,
+			// found nothing" (show the empty state, never re-fetch).
+			esc_attr( ! empty( $item['thumbnail_url'] ) ? $item['thumbnail_url'] : '' ),
+			esc_attr( ! empty( $item['thumbnail_fetched_at'] ) ? '1' : '' ),
 			esc_html( $item['anchor_text'] )
 		);
 	}

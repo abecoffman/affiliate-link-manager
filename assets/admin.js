@@ -246,6 +246,7 @@
 		var postField = document.getElementById( 'alm-edit-link-post' );
 		var contextField = document.getElementById( 'alm-edit-link-context' );
 		var providerDisplay = document.getElementById( 'alm-edit-link-provider-display' );
+		var thumbField = document.getElementById( 'alm-edit-link-thumb' );
 		var urlInput = document.getElementById( 'alm-edit-link-url-input' );
 		var ignoreLink = document.getElementById( 'alm-edit-link-ignore' );
 		var deleteLink = document.getElementById( 'alm-edit-link-delete' );
@@ -311,6 +312,84 @@
 		};
 
 		/**
+		 * Affiliate partner is rendered as a colored badge (reusing the
+		 * exact .alm-badge/.alm-badge-{provider} classes the Dashboard
+		 * and Links table already use for the same providers) instead of
+		 * plain text -- ties this modal into the same visual language
+		 * rather than inventing a separate one.
+		 */
+		var renderProviderBadge = function ( id, label ) {
+			providerDisplay.textContent = '';
+			var badge = document.createElement( 'span' );
+			badge.className = 'alm-badge alm-badge-' + id;
+			badge.textContent = label;
+			providerDisplay.appendChild( badge );
+		};
+
+		/**
+		 * The thumbnail slot always renders one of three states so the
+		 * layout never jumps between links: a shimmer while a first-ever
+		 * fetch for this link is in flight, the real photo once found,
+		 * or a quiet placeholder icon if none was found (or none exists
+		 * yet to know either way isn't a valid fourth state here --
+		 * loading always resolves to one of the other two).
+		 */
+		var setThumbState = function ( state, url ) {
+			thumbField.className = 'alm-modal-thumb alm-modal-thumb-' + state;
+			thumbField.textContent = '';
+			if ( 'image' === state && url ) {
+				var img = document.createElement( 'img' );
+				img.src = url;
+				img.alt = '';
+				img.loading = 'lazy';
+				img.referrerPolicy = 'no-referrer';
+				thumbField.appendChild( img );
+			}
+		};
+
+		/**
+		 * On-demand, cached -- only ever fetched the first time this
+		 * particular link's modal is opened (data-thumbnail-fetched
+		 * tells openModal() whether that's already happened). currentId
+		 * is checked in the response handler in case the admin closed
+		 * this modal and opened a different link before the request
+		 * resolved, same staleness guard scheduleProviderMatch() already
+		 * uses via matchRequestToken.
+		 */
+		var fetchThumbnail = function ( id, triggerLink ) {
+			var body = new FormData();
+			body.append( 'action', almAdmin.fetchThumbnailAction );
+			body.append( 'nonce', almAdmin.nonce );
+			body.append( 'id', id );
+
+			fetch( almAdmin.ajaxUrl, {
+				method: 'POST',
+				credentials: 'same-origin',
+				body: body,
+			} )
+				.then( function ( response ) {
+					return response.json();
+				} )
+				.then( function ( json ) {
+					if ( id !== currentId ) {
+						return;
+					}
+					var url = ( json.success && json.data.thumbnailUrl ) ? json.data.thumbnailUrl : '';
+					setThumbState( url ? 'image' : 'empty', url );
+					// Cached on the row's own data attributes so
+					// reopening this same link later (without a full
+					// page reload) renders instantly, no request.
+					triggerLink.setAttribute( 'data-thumbnail-url', url );
+					triggerLink.setAttribute( 'data-thumbnail-fetched', '1' );
+				} )
+				.catch( function () {
+					if ( id === currentId ) {
+						setThumbState( 'empty' );
+					}
+				} );
+		};
+
+		/**
 		 * Re-matches the provider for whatever's currently in the URL
 		 * field and updates the "Affiliate partner" display -- debounced
 		 * so it fires once after typing pauses, not on every keystroke.
@@ -350,7 +429,7 @@
 							return;
 						}
 						matchedProviderId = json.data.id;
-						providerDisplay.textContent = json.data.label;
+						renderProviderBadge( json.data.id, json.data.label );
 					} );
 			}, 400 );
 		};
@@ -408,8 +487,21 @@
 				resolvedUrlField.textContent = resolvedUrl;
 			}
 
-			providerDisplay.textContent = originalProviderLabel;
+			renderProviderBadge( originalProviderId, originalProviderLabel );
 			urlInput.value = originalUrl;
+
+			// Renders instantly from the row's own cached data
+			// attributes when already known (every open after the
+			// first); otherwise shows the loading state and fetches
+			// once, on demand. See ALM_Thumbnail_Fetcher.
+			var thumbnailUrl = link.getAttribute( 'data-thumbnail-url' ) || '';
+			var thumbnailFetched = '1' === link.getAttribute( 'data-thumbnail-fetched' );
+			if ( thumbnailFetched ) {
+				setThumbState( thumbnailUrl ? 'image' : 'empty', thumbnailUrl );
+			} else {
+				setThumbState( 'loading' );
+				fetchThumbnail( currentId, link );
+			}
 
 			// Mirrors how the link actually reads in the post -- real
 			// markup (other links, bold/italic), not flattened to plain

@@ -291,16 +291,21 @@
 }
 
 /* Edit-link modal (includes/views/edit-link-modal.php, driven by
-   assets/admin.js) -- wp-admin has no native modal component, this is
-   hand-rolled to match its own visual language (the .alm-card surface
-   treatment) rather than inventing a new one. */
+   assets/admin.js) -- wp-admin has no native modal component, and per
+   explicit user direction this one deliberately goes beyond wp-admin's
+   own flat, 4px-radius chrome (bigger radius, a real floating shadow)
+   rather than matching it. Still leans on the plugin's *own* existing
+   accent palette throughout (the same .alm-badge-* colors and purple
+   accent already used on the Dashboard/Links table) rather than
+   inventing a separate one -- consistency across the plugin over
+   novelty for its own sake. */
 .alm-modal-overlay {
 	position: fixed;
 	top: 0;
 	left: 0;
 	right: 0;
 	bottom: 0;
-	background: rgba(0, 0, 0, 0.5);
+	background: rgba(29, 23, 41, 0.55);
 	display: flex;
 	align-items: flex-start;
 	justify-content: center;
@@ -313,36 +318,122 @@
    .alm-modal-overlay { display: flex } above -- always wins over,
    equal selector specificity or not. Without this, the modal rendered
    open on every single page load, not just when JS actually opened
-   it: real bug, found live on honestlywtf, not just a theoretical one. */
-.alm-modal-overlay[hidden] {
-	display: none;
+   it: real bug, found live on honestlywtf, not just a theoretical one.
+
+   Same class of bug found a second time, live, in this same file:
+   #alm-edit-link-resolved (the "This shortened link actually points
+   to..." row) also carries class="description", and
+   .alm-modal .description below sets display: block unconditionally --
+   silently defeating [hidden] the exact same way, so it rendered
+   visible for every link, not just ones with a real resolved shortener
+   URL. A general rule this time, not another narrow one-off, since any
+   future .alm-modal child with both a "hidden by default" role and its
+   own display rule would hit the same trap -- !important is
+   deliberate here, not a specificity shortcut: [hidden] meaning "not
+   displayed" should never lose to a same-specificity same-order
+   author rule again the way the first attempt at this exact fix just
+   did (equal (0,2,0) specificity to .alm-modal .description, but
+   declared earlier in the file, so source order alone let
+   .description keep winning). */
+.alm-modal-overlay[hidden],
+.alm-modal [hidden] {
+	display: none !important;
 }
 
 .alm-modal {
 	background: #fff;
-	border-radius: 4px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-	padding: 24px;
+	border-radius: 16px;
+	box-shadow: 0 20px 50px rgba(29, 23, 41, 0.3), 0 2px 10px rgba(29, 23, 41, 0.12);
+	padding: 28px 28px 24px;
 	width: 100%;
-	max-width: 480px;
+	max-width: 500px;
 }
 
 .alm-modal h2 {
-	margin-top: 0;
+	margin: 0 0 4px;
+	font-size: 19px;
+	letter-spacing: -0.01em;
+}
+
+.alm-modal-body {
+	display: flex;
+	gap: 16px;
+	margin-top: 18px;
+}
+
+/* Always reserves the same fixed-size slot regardless of whether a
+   photo was actually found -- a real image, a loading shimmer, or a
+   muted placeholder icon, but never a layout jump between links. */
+.alm-modal-thumb {
+	flex: 0 0 92px;
+	width: 92px;
+	height: 92px;
+	border-radius: 12px;
+	overflow: hidden;
+	background: #f6f4fa;
+	border: 1px solid #e3e1ea;
+}
+
+.alm-modal-thumb img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.alm-modal-thumb-loading {
+	background-image: linear-gradient(90deg, #f6f4fa 25%, #e3e1ea 50%, #f6f4fa 75%);
+	background-size: 200% 100%;
+	animation: alm-thumb-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.alm-modal-thumb-loading {
+		animation: none;
+	}
+}
+
+@keyframes alm-thumb-shimmer {
+	0% { background-position: 200% 0; }
+	100% { background-position: -200% 0; }
+}
+
+/* No og:image/twitter:image found on the destination page -- a quiet
+   icon, not a broken image or an empty box. */
+.alm-modal-thumb-empty {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238c8f9a' stroke-width='1.6'%3E%3Crect x='3' y='5' width='18' height='14' rx='2'/%3E%3Ccircle cx='9' cy='10' r='1.6'/%3E%3Cpath d='M21 16l-5.5-5.5a1 1 0 0 0-1.4 0L6 19'/%3E%3C/svg%3E");
+	background-repeat: no-repeat;
+	background-position: center;
+	background-size: 24px 24px;
 }
 
 .alm-modal-context {
-	margin: 0 0 16px;
+	flex: 1;
+	min-width: 0;
+	margin: 0;
 }
 
+/* Small uppercase micro-labels instead of the previous default-size
+   bold <dt>s -- same treatment as the Dashboard's own
+   .alm-chip-section-label, reused rather than reinvented. */
 .alm-modal-context dt {
+	font-size: 11px;
 	font-weight: 600;
-	margin-top: 8px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #8c8f9a;
+	margin: 10px 0 3px;
+}
+
+.alm-modal-context dt:first-child {
+	margin-top: 0;
 }
 
 .alm-modal-context dd {
 	margin: 0;
-	color: #50575e;
+	font-size: 14px;
+	line-height: 1.45;
+	color: #1d2327;
 }
 
 .alm-modal-url {
@@ -366,8 +457,43 @@
 	border-radius: 2px;
 }
 
+/* Explicit break between the "context" header (post/link/partner) and
+   the URL-editing section below it -- replaces what used to be plain
+   whitespace with an actual visual boundary. */
+.alm-modal-divider {
+	height: 1px;
+	background: #eeecf2;
+	margin: 20px 0;
+}
+
+.alm-modal label {
+	display: block;
+	font-size: 11px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	color: #8c8f9a;
+	margin-bottom: 6px;
+}
+
+/* URLs read better monospaced, and it visually distinguishes the
+   field from the prose above it. Targeted by id, not .widefat, so
+   this safely wins over wp-admin's own default input styling without
+   a specificity fight. */
 #alm-edit-link-url-input {
+	font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	font-size: 13px;
+	color: #1d2327;
+	background: #f6f4fa;
+	border: 1px solid #d3cfe0;
+	border-radius: 9px;
+	padding: 10px 12px;
 	margin-bottom: 4px;
+}
+
+#alm-edit-link-url-input:focus {
+	border-color: #6b3fa0;
+	box-shadow: 0 0 0 3px rgba(107, 63, 160, 0.15);
 }
 
 .alm-modal .description {
@@ -398,6 +524,14 @@
 .alm-modal-actions-primary {
 	display: flex;
 	gap: 8px;
+}
+
+.alm-modal-actions-primary .button {
+	border-radius: 8px;
+}
+
+.alm-modal-actions-primary .button-primary {
+	box-shadow: 0 2px 6px rgba(107, 63, 160, 0.35);
 }
 
 .alm-modal-text-action {

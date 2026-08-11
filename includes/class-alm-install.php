@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ALM_Install {
 
 	const DB_VERSION_OPTION = 'alm_db_version';
-	const DB_VERSION        = '1.3.0';
+	const DB_VERSION        = '1.4.0';
 
 	/**
 	 * Real, documented status values -- the column itself is a plain
@@ -60,11 +60,12 @@ class ALM_Install {
 		$domains_table  = self::domains_table_name();
 		$domains_exists = $wpdb->get_var( $wpdb->prepare( 'SHOW TABLES LIKE %s', $domains_table ) ) === $domains_table;
 
-		$links_table         = self::table_name();
-		$show_columns_sql    = "SHOW COLUMNS FROM {$links_table} LIKE %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; the real value (a fixed column name) is bound via prepare() below.
-		$resolved_url_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'resolved_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$links_table          = self::table_name();
+		$show_columns_sql     = "SHOW COLUMNS FROM {$links_table} LIKE %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; the real value (a fixed column name) is bound via prepare() below.
+		$resolved_url_exists  = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'resolved_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$thumbnail_url_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'thumbnail_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
-		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists || ! $resolved_url_exists ) {
+		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists || ! $resolved_url_exists || ! $thumbnail_url_exists ) {
 			self::create_table();
 			update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 		}
@@ -118,12 +119,13 @@ class ALM_Install {
 		// "KEY", each column on its own line) -- see
 		// https://developer.wordpress.org/reference/functions/dbdelta/.
 		//
-		// resolved_url/resolved_at (see ALM_Shortener_Resolver/_Scanner):
-		// unlike the domain-content-check cache below, which is one row
-		// per *domain* shared by every link on it, a shortener's real
-		// destination is unique per link -- bit.ly/abc and bit.ly/xyz go
-		// completely different places -- so this has to live on the link
-		// row itself, not a shared cache table.
+		// resolved_url/resolved_at (see ALM_Shortener_Resolver/_Scanner)
+		// and thumbnail_url/thumbnail_fetched_at (see
+		// ALM_Thumbnail_Fetcher) both live on the link row itself, not a
+		// shared cache table like wp_alm_domains below -- unlike the
+		// domain-content-check cache (one row per *domain*, shared by
+		// every link on it), a shortener's real destination and a
+		// product's photo are both unique per link, not per domain.
 		$sql = "CREATE TABLE {$table_name} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			post_id BIGINT UNSIGNED NOT NULL,
@@ -139,6 +141,8 @@ class ALM_Install {
 			dismissed_at DATETIME NULL DEFAULT NULL,
 			resolved_url TEXT NULL,
 			resolved_at DATETIME NULL DEFAULT NULL,
+			thumbnail_url TEXT NULL,
+			thumbnail_fetched_at DATETIME NULL DEFAULT NULL,
 			PRIMARY KEY  (id),
 			KEY post_id (post_id),
 			KEY provider (provider),

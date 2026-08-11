@@ -19,6 +19,13 @@
  * apart from Cancel/Save (a different kind of action, not part of the
  * same URL-editing flow).
  *
+ * The thumbnail slot (#alm-edit-link-thumb) is populated the same way
+ * -- JS renders straight from the row's own data-thumbnail-url/
+ * data-thumbnail-fetched attributes when already known, or shows a
+ * loading state and fetches on demand via ALM_Admin::handle_fetch_thumbnail()
+ * the first time this particular link's modal is opened. See
+ * ALM_Thumbnail_Fetcher.
+ *
  * @package ALM
  */
 
@@ -30,14 +37,20 @@ if ( ! defined( 'ABSPATH' ) ) {
 	<div class="alm-modal" role="dialog" aria-modal="true" aria-labelledby="alm-edit-link-title">
 		<h2 id="alm-edit-link-title"><?php esc_html_e( 'Edit link', 'affiliate-link-manager' ); ?></h2>
 
-		<dl class="alm-modal-context">
-			<dt><?php esc_html_e( 'Post', 'affiliate-link-manager' ); ?></dt>
-			<dd id="alm-edit-link-post"></dd>
-			<dt><?php esc_html_e( 'Link text', 'affiliate-link-manager' ); ?></dt>
-			<dd id="alm-edit-link-context" class="alm-modal-snippet"></dd>
-			<dt><?php esc_html_e( 'Affiliate partner', 'affiliate-link-manager' ); ?></dt>
-			<dd id="alm-edit-link-provider-display"></dd>
-		</dl>
+		<div class="alm-modal-body">
+			<div id="alm-edit-link-thumb" class="alm-modal-thumb" aria-hidden="true"></div>
+
+			<dl class="alm-modal-context">
+				<dt><?php esc_html_e( 'Post', 'affiliate-link-manager' ); ?></dt>
+				<dd id="alm-edit-link-post"></dd>
+				<dt><?php esc_html_e( 'Link text', 'affiliate-link-manager' ); ?></dt>
+				<dd id="alm-edit-link-context" class="alm-modal-snippet"></dd>
+				<dt><?php esc_html_e( 'Affiliate partner', 'affiliate-link-manager' ); ?></dt>
+				<dd id="alm-edit-link-provider-display"></dd>
+			</dl>
+		</div>
+
+		<div class="alm-modal-divider"></div>
 
 		<p>
 			<label for="alm-edit-link-url-input"><?php esc_html_e( 'URL', 'affiliate-link-manager' ); ?></label>
