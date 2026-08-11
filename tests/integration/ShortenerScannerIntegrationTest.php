@@ -209,4 +209,97 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 
 		$this->assertSame( 1, $this->scanner->count_pending() );
 	}
+
+	/**
+	 * Feeds the Dashboard Tasks table's "Last run" line for Expand
+	 * Shortened Links -- same role
+	 * ALM_Domain_Scanner::record_check_delta() plays for Check Domains
+	 * (see ALM_Admin::get_dashboard_tasks()).
+	 */
+	public function test_first_of_run_records_a_delta_of_what_this_run_actually_found() {
+		$this->insert_link( 'http://bit.ly/tracked' );
+		$this->insert_link( 'http://bit.ly/dead' );
+		$this->fake_http_chain(
+			array(
+				'http://bit.ly/tracked' => array(
+					'status'   => 301,
+					'location' => 'https://amzn.to/manually-generated',
+				),
+				'https://amzn.to/manually-generated' => array( 'status' => 200 ),
+				'http://bit.ly/dead' => array( 'status' => 404 ),
+			)
+		);
+
+		$result = $this->scanner->check_batch( 10, true );
+		$this->assertTrue( $result['done'] );
+
+		$this->assertNotEmpty( get_option( 'alm_shortener_expand_started_at' ) );
+		$this->assertNotEmpty( get_option( 'alm_last_shortener_expand_time' ) );
+
+		$delta = get_option( 'alm_last_shortener_expand_delta' );
+		$this->assertSame( 1, $delta['reclassified'] );
+		$this->assertSame( 1, $delta['stale'] );
+	}
+
+	/**
+	 * A run spanning more than one batch must report on the whole run
+	 * once finished, and a resumed (non-first) batch must not reset
+	 * when the run itself began -- same guarantee
+	 * DomainScannerIntegrationTest locks in for Check Domains.
+	 */
+	public function test_a_resumed_batch_does_not_restamp_the_run_start_or_lose_the_first_batchs_delta() {
+		$this->insert_link( 'http://bit.ly/one' );
+		$this->insert_link( 'http://bit.ly/two' );
+		$this->fake_http_chain(
+			array(
+				'http://bit.ly/one' => array(
+					'status'   => 301,
+					'location' => 'https://amzn.to/one',
+				),
+				'https://amzn.to/one' => array( 'status' => 200 ),
+				'http://bit.ly/two'   => array(
+					'status'   => 301,
+					'location' => 'https://amzn.to/two',
+				),
+				'https://amzn.to/two' => array( 'status' => 200 ),
+			)
+		);
+
+		$first = $this->scanner->check_batch( 1, true );
+		$this->assertFalse( $first['done'], 'One link resolved out of two -- this run is not finished yet.' );
+		$started_after_first = get_option( 'alm_shortener_expand_started_at' );
+		$this->assertNotEmpty( $started_after_first );
+
+		$second = $this->scanner->check_batch( 1, false );
+		$this->assertTrue( $second['done'] );
+
+		$this->assertSame( $started_after_first, get_option( 'alm_shortener_expand_started_at' ), 'A resumed batch must not restamp when this run began.' );
+
+		$delta = get_option( 'alm_last_shortener_expand_delta' );
+		$this->assertSame( 2, $delta['reclassified'], 'The delta must cover both batches of this run, not just the last one.' );
+	}
+
+	/**
+	 * Every existing call site (and every other test in this file)
+	 * calls check_batch() with just one argument -- omitting the new
+	 * $is_first_of_run param must keep working exactly as before, not
+	 * fabricate a run boundary out of nothing.
+	 */
+	public function test_omitting_is_first_of_run_does_not_fabricate_a_run_start() {
+		$this->insert_link( 'http://bit.ly/no-first-flag' );
+		$this->fake_http_chain(
+			array(
+				'http://bit.ly/no-first-flag' => array(
+					'status'   => 301,
+					'location' => 'https://amzn.to/x',
+				),
+				'https://amzn.to/x' => array( 'status' => 200 ),
+			)
+		);
+
+		$this->scanner->check_batch( 10 );
+
+		$delta = get_option( 'alm_last_shortener_expand_delta' );
+		$this->assertSame( 0, $delta['reclassified'], 'With no known run start, the delta has nothing real to attribute to this call.' );
+	}
 }

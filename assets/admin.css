@@ -27,36 +27,82 @@
 	color: #646970;
 }
 
-.alm-total-count {
-	font-size: 20px;
-	font-weight: 600;
-	margin: 0 0 12px;
+/* Dashboard page-level intro sentence, directly under the H1 -- one
+   sentence stating the whole plugin's job in plain terms, outside any
+   card. The throughline the rest of the page hangs off of: Overview
+   shows the state this describes, Tasks shows the mechanics that keep
+   it accurate. */
+.alm-page-intro {
+	color: #646970;
+	max-width: 700px;
 }
 
-.alm-provider-breakdown {
+/* Overview stat grid: fixed-width tiles, not a <table> whose second
+   column trails a variable-width badge -- that was the literal cause
+   of the numbers looking randomly indented (each row's badge was a
+   different text length, so the count after it landed in a different
+   place every row). A grid tile's number is never at the mercy of its
+   own label's length. */
+.alm-stat-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+	gap: 12px;
 	margin-bottom: 16px;
 }
 
-.alm-provider-breakdown td {
-	padding: 4px 12px 4px 0;
+.alm-stat-tile {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 12px 16px;
+	border-radius: 4px;
+	background: #f6f7f7;
+	text-decoration: none;
+	border-left: 4px solid #dcdcde;
 }
 
-/* The Dashboard's headline two rows (Affiliate Links / Candidate
-   Affiliate Links) -- larger than the per-network sub-breakdown below
-   it, same visual weight .alm-total-count used to carry as the single
-   "X links found" line before the three-tier restructure. */
-.alm-status-headline .alm-badge {
-	font-size: 14px;
-	padding: 4px 12px;
+.alm-stat-tile-number {
+	font-size: 24px;
+	font-weight: 600;
+	color: #1d2327;
+	line-height: 1.2;
 }
 
-/* The per-network breakdown (ShopMy, RewardStyle) sits underneath the
-   Affiliate Links headline as supporting detail, not another
-   headline -- indented and slightly smaller says "detail", not
-   "another top-level number" competing for the same attention. */
-.alm-provider-sub-breakdown {
-	margin-left: 16px;
+.alm-stat-tile-label {
 	font-size: 13px;
+	color: #50575e;
+}
+
+.alm-stat-tile-active {
+	border-left-color: #007017;
+}
+
+.alm-stat-tile-convertible {
+	border-left-color: #6b3fa0;
+}
+
+.alm-stat-tile-stale {
+	border-left-color: #8a5a00;
+}
+
+/* The per-network breakdown (ShopMy, RewardStyle, ...) as a labeled,
+   wrapping chip row underneath the stat grid -- supporting detail, not
+   another headline, and (unlike a table column) a chip row can never
+   misalign since each chip carries its own width. */
+.alm-chip-section-label {
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: #646970;
+	margin: 0 0 6px;
+}
+
+.alm-chip-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 16px;
 }
 
 /* Other Outbound Links is deliberately just a summary number, never a
@@ -113,39 +159,6 @@
 	color: #646970;
 }
 
-/* Status badges use a separate alm-badge-status-* prefix, not
-   alm-badge-* -- "unclassified" is both a provider fallback id and a
-   status value, and the two columns need to be able to disagree
-   (an unclassified-provider link is not necessarily stale/ignored). */
-.alm-badge-status-active {
-	background: #d7f0d7;
-	color: #007017;
-}
-
-/* Deliberately not the same blue as .alm-badge-shopmy -- a "Candidate"
-   status badge and a "ShopMy" provider badge can appear right next to
-   each other (e.g. the Dashboard's headline/sub-breakdown tables) and
-   need to read as different things at a glance. */
-.alm-badge-status-convertible {
-	background: #f0e6fb;
-	color: #6b3fa0;
-}
-
-.alm-badge-status-unclassified {
-	background: #f0f0f1;
-	color: #646970;
-}
-
-.alm-badge-status-stale {
-	background: #fcf0d7;
-	color: #8a5a00;
-}
-
-.alm-badge-status-ignored {
-	background: #f0f0f1;
-	color: #a7aaad;
-}
-
 .alm-scan-progress {
 	margin-left: 8px;
 	color: #646970;
@@ -159,9 +172,10 @@
 /* Defense in depth: even with the truncated URL column above, a long
    enough post title, link text, or provider-breakdown chip row can
    still push a table wider than the viewport -- scroll inside this
-   box (wraps the Links and Posts tables) rather than letting the page
-   itself gain horizontal scroll (a real bug, previously caught only by
-   actually rendering the page, not by reading the markup).
+   box (wraps the Links table and the Dashboard's Tasks table) rather
+   than letting the page itself gain horizontal scroll (a real bug,
+   previously caught only by actually rendering the page, not by
+   reading the markup).
 
    The explicit width:100% is load-bearing, not decorative: a block
    div with overflow-x:auto and no explicit width shrink-wraps to its
@@ -193,34 +207,34 @@
 	margin: 16px 0;
 }
 
-/* Maintenance card (Dashboard): Shortened links + Possible unrecognized
-   networks grouped together, one card, lower visual weight than
-   Overview -- see includes/views/dashboard.php. Each section gets a
-   hairline divider from the one before it, not just vertical spacing,
-   so it's clear they're sub-sections of one card rather than
-   independent content stacked inside it. */
-.alm-maintenance-section {
-	margin-top: 20px;
-	padding-top: 20px;
-	border-top: 1px solid #f0f0f1;
+/* Dashboard Tasks table: one row per background operation (Scan, Check
+   Domains, Expand Shortened Links), all the same shape -- rides on
+   wp-admin's own native .widefat/.striped table styling (the same
+   convention Site Health/WooCommerce Status use for exactly this kind
+   of "operation + its own last result" list), not a hand-rolled look. */
+.alm-tasks-table td {
+	vertical-align: top;
+	padding-top: 12px;
+	padding-bottom: 12px;
 }
 
-.alm-maintenance-section:first-of-type {
-	margin-top: 0;
-	padding-top: 0;
-	border-top: none;
+.alm-tasks-table .description {
+	margin: 2px 0 0;
 }
 
-.alm-maintenance-section h3 {
-	margin: 0 0 4px;
+.alm-task-done {
+	color: #646970;
+	font-size: 13px;
 }
 
-/* Possible unrecognized networks: informational only, no action button
-   -- deliberately quieter than the Affiliate Links sub-breakdown above
-   it, which every row of *is* actionable (click to filter). */
-.alm-network-signals {
+/* Possible unrecognized networks: a quiet note below the Tasks table,
+   not its own card -- it has no action button, so an admin can't do
+   anything about it directly here; deliberately lower-key than
+   everything actionable above it. */
+.alm-network-signals-note {
 	font-size: 13px;
 	color: #646970;
+	max-width: 700px;
 }
 
 /* Settings screen: "Networks" and "Scan behavior" are two sections of

@@ -2,12 +2,12 @@
  * Admin UI behavior for Affiliate Link Manager.
  *
  * Plain JS, no build step, no framework -- same convention as the
- * sibling webp-generator plugin. Both buttons below loop resumable AJAX
- * batches until the server reports done, then reload the page so the
- * Dashboard/Links/Posts screens show fresh data. Each is wired
- * independently (its own existence check), not chained off the other
- * one being present -- they're two separate features that happen to
- * both live on the Dashboard today, not one feature.
+ * sibling webp-generator plugin. The three Dashboard Tasks buttons each
+ * loop resumable AJAX batches until the server reports done, then
+ * reload the page so the Dashboard/Links screens show fresh data. Each
+ * is wired independently (its own existence check), not chained off
+ * the others being present -- they're separate features that happen to
+ * share one Tasks table today, not one feature.
  */
 ( function () {
 	'use strict';
@@ -86,7 +86,12 @@
 	 * ALM_Domain_Scanner always asks for "the next few domains still
 	 * needing a check", and a domain drops out of that pool for good
 	 * once checked, so each call naturally picks up where the last one
-	 * left off with no state to pass between requests.
+	 * left off with no state to pass between requests. The one bit of
+	 * state this loop *does* thread through is `isFirst` -- true only on
+	 * the click-triggered call, sent as `first` so
+	 * ALM_Domain_Scanner::check_batch() knows exactly when this run
+	 * began (needed to compute what this run itself found, once done --
+	 * see its docblock).
 	 */
 	var checkDomainsButton = document.getElementById( 'alm-check-domains' );
 	var domainProgress = document.getElementById( 'alm-domain-check-progress' );
@@ -99,10 +104,11 @@
 			domainProgress.textContent = text;
 		};
 
-		var checkNextDomainBatch = function () {
+		var checkNextDomainBatch = function ( isFirst ) {
 			var body = new FormData();
 			body.append( 'action', almAdmin.domainCheckAction );
 			body.append( 'nonce', almAdmin.nonce );
+			body.append( 'first', isFirst ? '1' : '0' );
 
 			fetch( almAdmin.ajaxUrl, {
 				method: 'POST',
@@ -132,7 +138,7 @@
 						return;
 					}
 
-					checkNextDomainBatch();
+					checkNextDomainBatch( false );
 				} )
 				.catch( function () {
 					setDomainProgressText( almAdmin.strings.error );
@@ -144,7 +150,7 @@
 			checkDomainsButton.disabled = true;
 			domainsCheckedSoFar = 0;
 			setDomainProgressText( almAdmin.strings.checkingDomains );
-			checkNextDomainBatch();
+			checkNextDomainBatch( true );
 		} );
 	}
 
@@ -152,7 +158,8 @@
 	 * Expand Shortened Links: same no-offset-cursor shape as Check
 	 * Domains above -- ALM_Shortener_Scanner always asks for "the next
 	 * few links still needing resolution," and a link drops out of that
-	 * pool for good (resolved_at gets set) once checked.
+	 * pool for good (resolved_at gets set) once checked. Same `first`
+	 * flag as Check Domains, same reason (see its comment above).
 	 */
 	var expandShortenersButton = document.getElementById( 'alm-expand-shorteners' );
 	var shortenerProgress = document.getElementById( 'alm-expand-shorteners-progress' );
@@ -165,10 +172,11 @@
 			shortenerProgress.textContent = text;
 		};
 
-		var expandNextShortenerBatch = function () {
+		var expandNextShortenerBatch = function ( isFirst ) {
 			var body = new FormData();
 			body.append( 'action', almAdmin.expandShortenersAction );
 			body.append( 'nonce', almAdmin.nonce );
+			body.append( 'first', isFirst ? '1' : '0' );
 
 			fetch( almAdmin.ajaxUrl, {
 				method: 'POST',
@@ -198,7 +206,7 @@
 						return;
 					}
 
-					expandNextShortenerBatch();
+					expandNextShortenerBatch( false );
 				} )
 				.catch( function () {
 					setShortenerProgressText( almAdmin.strings.error );
@@ -210,7 +218,7 @@
 			expandShortenersButton.disabled = true;
 			shortenersCheckedSoFar = 0;
 			setShortenerProgressText( almAdmin.strings.expandingShorteners );
-			expandNextShortenerBatch();
+			expandNextShortenerBatch( true );
 		} );
 	}
 

@@ -111,11 +111,23 @@ class ALM_Domain_Scanner {
 	 * Checks up to $batch_size domains that need it (never-checked
 	 * first, then longest-stale) and reclassifies every affected link.
 	 *
-	 * @param int $batch_size
+	 * @param int  $batch_size
+	 * @param bool $is_first_of_run True only for the click-triggered
+	 *                               first batch of a run, not any batch
+	 *                               resumed after it -- marks when this
+	 *                               run started, mirroring
+	 *                               ALM_Scanner::scan_batch()'s own
+	 *                               offset===0 convention, so the
+	 *                               eventual delta (once $done) only
+	 *                               counts what *this* run actually did.
 	 * @return array{done:bool,checked:int,remaining:int}
 	 */
-	public function check_batch( $batch_size ) {
+	public function check_batch( $batch_size, $is_first_of_run = false ) {
 		$this->sync_known_domains();
+
+		if ( $is_first_of_run ) {
+			update_option( 'alm_domain_check_started_at', current_time( 'mysql' ) );
+		}
 
 		global $wpdb;
 		$domains_table = ALM_Install::domains_table_name();
@@ -129,11 +141,59 @@ class ALM_Domain_Scanner {
 		}
 
 		$remaining = $this->count_domains_needing_check();
+		$done      = 0 === $remaining;
+
+		if ( $done ) {
+			$this->record_check_delta( get_option( 'alm_domain_check_started_at', '' ) );
+			update_option( 'alm_last_domain_check_time', current_time( 'mysql' ) );
+		}
 
 		return array(
-			'done'      => 0 === $remaining,
+			'done'      => $done,
 			'checked'   => count( $rows ),
 			'remaining' => $remaining,
+		);
+	}
+
+	/**
+	 * Records what this run actually found -- read by the Dashboard's
+	 * Tasks table so "Check Domains" can say what happened last time,
+	 * the same way ALM_Scanner::record_scan_delta() already does for
+	 * Run Scan. Deliberately scoped to domains checked_at >= $started_at
+	 * (this run only), not an all-time cumulative total.
+	 *
+	 * @param string $started_at MySQL datetime this run began, or '' if unknown.
+	 * @return void
+	 */
+	private function record_check_delta( $started_at ) {
+		$shops = 0;
+		$not   = 0;
+
+		if ( $started_at ) {
+			global $wpdb;
+			$table = ALM_Install::domains_table_name();
+
+			$sql  = "SELECT is_shop, COUNT(*) as total FROM {$table} WHERE checked_at >= %s GROUP BY is_shop"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $started_at ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
+
+			foreach ( (array) $rows as $row ) {
+				if ( null === $row['is_shop'] ) {
+					continue;
+				}
+				if ( (int) $row['is_shop'] ) {
+					$shops = (int) $row['total'];
+				} else {
+					$not = (int) $row['total'];
+				}
+			}
+		}
+
+		update_option(
+			'alm_last_domain_check_delta',
+			array(
+				'confirmed_shops' => $shops,
+				'confirmed_not'   => $not,
+			)
 		);
 	}
 

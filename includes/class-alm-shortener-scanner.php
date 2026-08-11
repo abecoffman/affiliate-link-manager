@@ -55,15 +55,25 @@ class ALM_Shortener_Scanner {
 	}
 
 	/**
-	 * @param int $batch_size
+	 * @param int  $batch_size
+	 * @param bool $is_first_of_run True only for the click-triggered
+	 *                               first batch of a run -- same
+	 *                               "mark when this run started" role
+	 *                               ALM_Domain_Scanner::check_batch()'s
+	 *                               own param plays.
 	 * @return array{done:bool,checked:int,remaining:int}
 	 */
-	public function check_batch( $batch_size ) {
+	public function check_batch( $batch_size, $is_first_of_run = false ) {
+		if ( $is_first_of_run ) {
+			update_option( 'alm_shortener_expand_started_at', current_time( 'mysql' ) );
+		}
+
 		global $wpdb;
 		$table = ALM_Install::table_name();
 
 		list( $placeholders, $domains ) = $this->domains_in_clause();
 		if ( ! $domains ) {
+			$this->finish_run_if_done( true );
 			return array(
 				'done'      => true,
 				'checked'   => 0,
@@ -82,11 +92,64 @@ class ALM_Shortener_Scanner {
 		}
 
 		$remaining = $this->count_pending();
+		$done      = 0 === $remaining;
+		$this->finish_run_if_done( $done );
 
 		return array(
-			'done'      => 0 === $remaining,
+			'done'      => $done,
 			'checked'   => count( $rows ),
 			'remaining' => $remaining,
+		);
+	}
+
+	/**
+	 * @param bool $done
+	 * @return void
+	 */
+	private function finish_run_if_done( $done ) {
+		if ( ! $done ) {
+			return;
+		}
+
+		$this->record_expand_delta( get_option( 'alm_shortener_expand_started_at', '' ) );
+		update_option( 'alm_last_shortener_expand_time', current_time( 'mysql' ) );
+	}
+
+	/**
+	 * Records what this run actually found -- read by the Dashboard's
+	 * Tasks table, same role ALM_Domain_Scanner::record_check_delta()
+	 * plays for Check Domains. Scoped to links resolved_at >= $started_at
+	 * (this run only).
+	 *
+	 * @param string $started_at MySQL datetime this run began, or '' if unknown.
+	 * @return void
+	 */
+	private function record_expand_delta( $started_at ) {
+		$reclassified = 0;
+		$stale        = 0;
+
+		if ( $started_at ) {
+			global $wpdb;
+			$table = ALM_Install::table_name();
+
+			$sql  = "SELECT status, COUNT(*) as total FROM {$table} WHERE resolved_at >= %s GROUP BY status"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $started_at ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
+
+			foreach ( (array) $rows as $row ) {
+				if ( ALM_Install::STATUS_ACTIVE === $row['status'] ) {
+					$reclassified = (int) $row['total'];
+				} elseif ( ALM_Install::STATUS_STALE === $row['status'] ) {
+					$stale = (int) $row['total'];
+				}
+			}
+		}
+
+		update_option(
+			'alm_last_shortener_expand_delta',
+			array(
+				'reclassified' => $reclassified,
+				'stale'        => $stale,
+			)
 		);
 	}
 

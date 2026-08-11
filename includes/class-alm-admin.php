@@ -263,7 +263,12 @@ class ALM_Admin {
 		// Real HTTP requests to third-party sites, much slower per-item
 		// than the link scanner's own DB-only batches -- a small batch
 		// size keeps this comfortably clear of max_execution_time.
-		$result = $this->domain_scanner->check_batch( 5 );
+		// $is_first_of_run marks the click-triggered first call of a run
+		// (not any batch resumed after it) so ALM_Domain_Scanner can
+		// scope its "what did this run find" delta correctly -- see
+		// its check_batch() docblock.
+		$is_first_of_run = ! empty( $_POST['first'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above via check_ajax_referer().
+		$result          = $this->domain_scanner->check_batch( 5, $is_first_of_run );
 
 		wp_send_json_success( $result );
 	}
@@ -277,7 +282,8 @@ class ALM_Admin {
 
 		// Real HTTP requests, up to ALM_Shortener_Resolver::MAX_HOPS deep
 		// per link -- same small-batch reasoning as Check Domains above.
-		$result = $this->shortener_scanner->check_batch( 5 );
+		$is_first_of_run = ! empty( $_POST['first'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above via check_ajax_referer().
+		$result          = $this->shortener_scanner->check_batch( 5, $is_first_of_run );
 
 		wp_send_json_success( $result );
 	}
@@ -404,13 +410,11 @@ class ALM_Admin {
 	}
 
 	public function render_dashboard() {
-		$stats              = $this->get_provider_stats();
-		$status_summary     = $this->get_status_summary();
-		$stale_count        = $this->get_stale_count();
-		$scan_delta         = get_option( 'alm_last_scan_delta', array() );
-		$domain_check       = $this->get_domain_check_stats();
-		$network_signals    = $this->network_signal_scanner->scan();
-		$shorteners_pending = $this->shortener_scanner->count_pending();
+		$stats           = $this->get_provider_stats();
+		$status_summary  = $this->get_status_summary();
+		$stale_count     = $this->get_stale_count();
+		$network_signals = $this->network_signal_scanner->scan();
+		$tasks           = $this->get_dashboard_tasks();
 		require ALM_PATH . 'includes/views/dashboard.php';
 	}
 
@@ -511,24 +515,157 @@ class ALM_Admin {
 	}
 
 	/**
-	 * @return array{checked:int,pending:int,confirmed_shops:int,confirmed_noise:int}
+	 * The Dashboard's Tasks table: one row per background operation, all
+	 * shaped identically (label, why it matters, what happened last
+	 * time, how much is left, one button) instead of three differently-
+	 * shaped cards -- see includes/views/dashboard.php. Formatting lives
+	 * here, once, rather than duplicated per task in the template.
+	 *
+	 * @return array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool}>
 	 */
-	private function get_domain_check_stats() {
-		global $wpdb;
-		$table = ALM_Install::domains_table_name();
-
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$checked = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE checked_at IS NOT NULL" );
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$shops = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE is_shop = 1" );
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching
-		$noise = (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$table} WHERE is_shop = 0" );
-
+	private function get_dashboard_tasks() {
 		return array(
-			'checked'         => $checked,
-			'pending'         => $this->domain_scanner->count_domains_needing_check(),
-			'confirmed_shops' => $shops,
-			'confirmed_noise' => $noise,
+			array(
+				'id'           => 'scan',
+				'label'        => __( 'Scan', 'affiliate-link-manager' ),
+				'description'  => __( 'Finds links in your published posts and classifies each one as an affiliate link, a candidate, or noise.', 'affiliate-link-manager' ),
+				'last_run'     => $this->format_last_run(
+					get_option( 'alm_last_scan_time', '' ),
+					$this->format_scan_delta( get_option( 'alm_last_scan_delta', array() ) )
+				),
+				// No queue concept -- a scan always re-covers every
+				// scannable post, unlike the two resumable queues below.
+				'pending'      => null,
+				'button_id'    => 'alm-run-scan',
+				'progress_id'  => 'alm-scan-progress',
+				'button_label' => __( 'Run Scan', 'affiliate-link-manager' ),
+				'primary'      => true,
+			),
+			array(
+				'id'           => 'domains',
+				'label'        => __( 'Check Domains', 'affiliate-link-manager' ),
+				'description'  => __( 'Confirms candidate domains are real shops, not reference or magazine sites, so those don\'t get counted as opportunities.', 'affiliate-link-manager' ),
+				'last_run'     => $this->format_last_run(
+					get_option( 'alm_last_domain_check_time', '' ),
+					$this->format_domain_check_delta( get_option( 'alm_last_domain_check_delta', array() ) )
+				),
+				'pending'      => $this->domain_scanner->count_domains_needing_check(),
+				'button_id'    => 'alm-check-domains',
+				'progress_id'  => 'alm-domain-check-progress',
+				'button_label' => __( 'Check Domains', 'affiliate-link-manager' ),
+				'primary'      => false,
+			),
+			array(
+				'id'           => 'shorteners',
+				'label'        => __( 'Expand Shortened Links', 'affiliate-link-manager' ),
+				'description'  => __( 'Follows bit.ly, etsy.me, and other shortened links to their real destination, so those get tracked (or flagged dead) instead of sitting unclassified.', 'affiliate-link-manager' ),
+				'last_run'     => $this->format_last_run(
+					get_option( 'alm_last_shortener_expand_time', '' ),
+					$this->format_shortener_delta( get_option( 'alm_last_shortener_expand_delta', array() ) )
+				),
+				'pending'      => $this->shortener_scanner->count_pending(),
+				'button_id'    => 'alm-expand-shorteners',
+				'progress_id'  => 'alm-expand-shorteners-progress',
+				'button_label' => __( 'Expand Shortened Links', 'affiliate-link-manager' ),
+				'primary'      => false,
+			),
+		);
+	}
+
+	/**
+	 * Single source of truth for "Last run" phrasing across every Tasks
+	 * row -- relative time (human_time_diff(), the same idiom wp-admin
+	 * itself uses for "X ago") plus whatever that task's own delta
+	 * formatter has to say, so all three rows read in the same voice
+	 * instead of Run Scan being the only one with a real answer.
+	 *
+	 * @param string $time       MySQL datetime this task last completed, or '' if never.
+	 * @param string $delta_text Pre-formatted delta phrase, or '' if none.
+	 * @return string
+	 */
+	private function format_last_run( $time, $delta_text ) {
+		if ( ! $time ) {
+			return __( 'Never run yet.', 'affiliate-link-manager' );
+		}
+
+		$relative = sprintf(
+			/* translators: %s: human-readable time difference, e.g. "2 hours" */
+			__( '%s ago', 'affiliate-link-manager' ),
+			human_time_diff( strtotime( $time ), current_time( 'timestamp' ) ) // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested -- human_time_diff() needs a plain Unix timestamp to diff against; current_time('timestamp') is the documented way to get one on the same WP-local basis $time itself was written with.
+		);
+
+		return $delta_text ? $relative . ' — ' . $delta_text : $relative;
+	}
+
+	/**
+	 * @param array{new_links?:int,now_stale?:int} $delta
+	 * @return string
+	 */
+	private function format_scan_delta( array $delta ) {
+		if ( empty( $delta ) ) {
+			return '';
+		}
+
+		$new_links = isset( $delta['new_links'] ) ? (int) $delta['new_links'] : 0;
+		$now_stale = isset( $delta['now_stale'] ) ? (int) $delta['now_stale'] : 0;
+
+		if ( 0 === $new_links && 0 === $now_stale ) {
+			return __( 'no changes', 'affiliate-link-manager' );
+		}
+
+		return sprintf(
+			/* translators: 1: number of new links found, 2: number of links that went stale */
+			__( '%1$d new, %2$d now stale', 'affiliate-link-manager' ),
+			$new_links,
+			$now_stale
+		);
+	}
+
+	/**
+	 * @param array{confirmed_shops?:int,confirmed_not?:int} $delta
+	 * @return string
+	 */
+	private function format_domain_check_delta( array $delta ) {
+		if ( empty( $delta ) ) {
+			return '';
+		}
+
+		$shops = isset( $delta['confirmed_shops'] ) ? (int) $delta['confirmed_shops'] : 0;
+		$not   = isset( $delta['confirmed_not'] ) ? (int) $delta['confirmed_not'] : 0;
+
+		if ( 0 === $shops && 0 === $not ) {
+			return __( 'nothing new to confirm', 'affiliate-link-manager' );
+		}
+
+		return sprintf(
+			/* translators: 1: number of domains confirmed to be real shops, 2: number confirmed not to be */
+			__( '%1$d confirmed shops, %2$d confirmed not', 'affiliate-link-manager' ),
+			$shops,
+			$not
+		);
+	}
+
+	/**
+	 * @param array{reclassified?:int,stale?:int} $delta
+	 * @return string
+	 */
+	private function format_shortener_delta( array $delta ) {
+		if ( empty( $delta ) ) {
+			return '';
+		}
+
+		$reclassified = isset( $delta['reclassified'] ) ? (int) $delta['reclassified'] : 0;
+		$stale        = isset( $delta['stale'] ) ? (int) $delta['stale'] : 0;
+
+		if ( 0 === $reclassified && 0 === $stale ) {
+			return __( 'nothing new to resolve', 'affiliate-link-manager' );
+		}
+
+		return sprintf(
+			/* translators: 1: number of shortened links tracked to a known network, 2: number confirmed dead */
+			__( '%1$d tracked, %2$d marked stale', 'affiliate-link-manager' ),
+			$reclassified,
+			$stale
 		);
 	}
 }

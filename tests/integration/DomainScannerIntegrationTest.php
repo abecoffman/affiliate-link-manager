@@ -214,4 +214,82 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 
 		$this->assertSame( 1, $this->scanner->count_domains_needing_check() );
 	}
+
+	/**
+	 * Feeds the Dashboard Tasks table's "Last run" line for Check
+	 * Domains -- same role ALM_Scanner::record_scan_delta() plays for
+	 * Run Scan, added so that row could finally say what it found last
+	 * time instead of nothing (see ALM_Admin::get_dashboard_tasks()).
+	 */
+	public function test_first_of_run_records_a_delta_of_what_this_run_actually_found() {
+		$this->insert_link( 'https://realshop.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://magazine.example/article', ALM_Install::STATUS_CONVERTIBLE );
+
+		add_filter(
+			'pre_http_request',
+			function ( $preempt, $args, $url ) {
+				$body = ( false !== strpos( $url, 'realshop.example' ) )
+					? '<meta property="og:type" content="product" />'
+					: '<html><body><article><h1>An article</h1></article></body></html>';
+				return array(
+					'response' => array( 'code' => 200 ),
+					'body'     => $body,
+					'headers'  => array(),
+				);
+			},
+			10,
+			3
+		);
+
+		$result = $this->scanner->check_batch( 10, true );
+		$this->assertTrue( $result['done'] );
+
+		$this->assertNotEmpty( get_option( 'alm_domain_check_started_at' ) );
+		$this->assertNotEmpty( get_option( 'alm_last_domain_check_time' ) );
+
+		$delta = get_option( 'alm_last_domain_check_delta' );
+		$this->assertSame( 1, $delta['confirmed_shops'] );
+		$this->assertSame( 1, $delta['confirmed_not'] );
+	}
+
+	/**
+	 * A run that spans more than one batch (small batch size forces
+	 * this) must still report on the whole run once it finishes, not
+	 * just whatever the final batch touched -- and a resumed (non-first)
+	 * batch must not reset when the run itself began.
+	 */
+	public function test_a_resumed_batch_does_not_restamp_the_run_start_or_lose_the_first_batchs_delta() {
+		$this->insert_link( 'https://shop-a.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://shop-b.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->fake_http_response( '<meta property="og:type" content="product" />' );
+
+		$first = $this->scanner->check_batch( 1, true );
+		$this->assertFalse( $first['done'], 'One domain checked out of two -- this run is not finished yet.' );
+		$started_after_first = get_option( 'alm_domain_check_started_at' );
+		$this->assertNotEmpty( $started_after_first );
+
+		$second = $this->scanner->check_batch( 1, false );
+		$this->assertTrue( $second['done'] );
+
+		$this->assertSame( $started_after_first, get_option( 'alm_domain_check_started_at' ), 'A resumed batch must not restamp when this run began.' );
+
+		$delta = get_option( 'alm_last_domain_check_delta' );
+		$this->assertSame( 2, $delta['confirmed_shops'], 'The delta must cover both batches of this run, not just the last one.' );
+	}
+
+	/**
+	 * Every existing call site (and every other test in this file)
+	 * calls check_batch() with just one argument -- omitting the new
+	 * $is_first_of_run param must keep working exactly as before, not
+	 * fabricate a run boundary out of nothing.
+	 */
+	public function test_omitting_is_first_of_run_does_not_fabricate_a_run_start() {
+		$this->insert_link( 'https://shop-c.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->fake_http_response( '<meta property="og:type" content="product" />' );
+
+		$this->scanner->check_batch( 10 );
+
+		$delta = get_option( 'alm_last_domain_check_delta' );
+		$this->assertSame( 0, $delta['confirmed_shops'], 'With no known run start, the delta has nothing real to attribute to this call.' );
+	}
 }
