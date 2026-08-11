@@ -1,7 +1,10 @@
 <?php
 /**
  * Providers screen: enable/configure each registered affiliate network
- * provider.
+ * provider. ALM_Provider_Generic is deliberately excluded by
+ * ALM_Admin::render_providers() before this ever runs -- it's a
+ * fallback classification, not a real network with anything to
+ * configure.
  *
  * @package ALM
  *

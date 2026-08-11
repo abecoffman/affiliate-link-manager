@@ -292,6 +292,13 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * A provider filter dropdown alongside the status tabs -- WP_List_Table
 	 * doesn't generate arbitrary filters itself, this is the standard
 	 * extension point core screens (e.g. Posts' category dropdown) use.
+	 * Unlike the Edit modal's provider display (which never shows
+	 * ALM_Provider_Generic at all -- it's never a real pick target),
+	 * this dropdown keeps it, labeled "Unaffiliated" via the same
+	 * provider_display_label() every other provider label in this
+	 * table goes through: filtering *by* "not yet attached to a real
+	 * network" is a genuinely useful view (most Candidates are exactly
+	 * this), unlike converting a link *to* it.
 	 *
 	 * @param string $which 'top' or 'bottom'.
 	 * @return void
@@ -310,7 +317,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 				<option value=""><?php esc_html_e( 'All providers', 'affiliate-link-manager' ); ?></option>
 				<?php foreach ( $this->providers->get_providers() as $provider ) : ?>
 					<option value="<?php echo esc_attr( $provider->get_id() ); ?>" <?php selected( $current, $provider->get_id() ); ?>>
-						<?php echo esc_html( $provider->get_label() ); ?>
+						<?php echo esc_html( self::provider_display_label( $provider ) ); ?>
 					</option>
 				<?php endforeach; ?>
 			</select>

@@ -408,7 +408,16 @@ class ALM_Admin {
 	}
 
 	public function render_providers() {
-		$providers = $this->providers->get_providers();
+		// ALM_Provider_Generic excluded -- it's the scanner's own
+		// always-matches fallback for "no real network recognized this
+		// URL," not a real network with settings to manage. Same gate
+		// get_provider_capabilities() already uses for the Edit modal.
+		$providers = array_filter(
+			$this->providers->get_providers(),
+			static function ( $provider ) {
+				return ! ( $provider instanceof ALM_Provider_Generic );
+			}
+		);
 		require ALM_PATH . 'includes/views/providers.php';
 	}
 
