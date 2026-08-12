@@ -257,6 +257,15 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * shown as a permanent "(0)", keeping the tab bar from accumulating
 	 * statuses nobody's ever actually seen.
 	 *
+	 * "Dead" is the one tab here that isn't a real ALM_Install::STATUS_*
+	 * value -- it's the narrower status=stale AND dead_confirmed_at IS
+	 * NOT NULL slice (see ALM_Install::create_table()'s docblock for why
+	 * status=stale alone conflates two different meanings). "Stale"
+	 * itself is untouched, still the broader, unfiltered bucket; "Dead"
+	 * sits right after it as the answer to "which of these are actually
+	 * worth removing." prepare_items() special-cases the ?status=dead
+	 * query value into that compound condition.
+	 *
 	 * @return array<string,string>
 	 */
 	public function get_views() {
@@ -264,8 +273,12 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$table = ALM_Install::table_name();
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$counts    = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
-		$by_status = wp_list_pluck( $counts, 'total', 'status' );
+		$counts         = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
+		$by_status      = wp_list_pluck( $counts, 'total', 'status' );
+		$dead_count_sql = "SELECT COUNT(*) FROM {$table} WHERE status = %s AND dead_confirmed_at IS NOT NULL"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
+		$dead_count = (int) $wpdb->get_var( $wpdb->prepare( $dead_count_sql, ALM_Install::STATUS_STALE ) );
+
 		// "All" here means all three visible tiers, not literally every
 		// row -- Other Outbound Links is excluded from this sum the same
 		// way it's excluded from the "All" tab's own query in
@@ -283,11 +296,26 @@ class ALM_Links_List_Table extends WP_List_Table {
 			// Candidates listed first -- it's the tab most worth an
 			// editor's attention, not an alphabetical/schema accident.
 			$labels[ $status ] = self::status_label( $status, true );
+
+			// "Dead" immediately follows "Stale" -- its own count is
+			// computed separately above (not from $by_status, which only
+			// has real status values), so it's spliced in here rather
+			// than folded into the generic per-status loop below.
+			if ( ALM_Install::STATUS_STALE === $status ) {
+				$labels['dead'] = __( 'Dead Links', 'affiliate-link-manager' );
+			}
 		}
 
 		$views = array();
 		foreach ( $labels as $status => $label ) {
-			$count = '' === $status ? $total : ( isset( $by_status[ $status ] ) ? (int) $by_status[ $status ] : 0 );
+			if ( '' === $status ) {
+				$count = $total;
+			} elseif ( 'dead' === $status ) {
+				$count = $dead_count;
+			} else {
+				$count = isset( $by_status[ $status ] ) ? (int) $by_status[ $status ] : 0;
+			}
+
 			if ( '' !== $status && 0 === $count ) {
 				continue;
 			}
@@ -376,9 +404,17 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$params = array();
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filters, not a state-changing action.
-		if ( ! empty( $_GET['status'] ) ) {
+		$status_param = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ( 'dead' === $status_param ) {
+			// Not a real ALM_Install::STATUS_* value -- see get_views()'s
+			// own docblock for why "Dead" needs this compound condition
+			// instead of a plain status equality.
+			$where[]  = 'alm.status = %s AND alm.dead_confirmed_at IS NOT NULL';
+			$params[] = ALM_Install::STATUS_STALE;
+		} elseif ( '' !== $status_param ) {
 			$where[]  = 'alm.status = %s';
-			$params[] = sanitize_key( wp_unslash( $_GET['status'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$params[] = $status_param;
 		} else {
 			// "All" (no explicit status param) means all three visible
 			// tiers -- Other Outbound Links is deliberately never part of

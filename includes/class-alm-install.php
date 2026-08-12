@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ALM_Install {
 
 	const DB_VERSION_OPTION = 'alm_db_version';
-	const DB_VERSION        = '1.5.0';
+	const DB_VERSION        = '1.6.0';
 
 	/**
 	 * Real, documented status values -- the column itself is a plain
@@ -65,8 +65,9 @@ class ALM_Install {
 		$resolved_url_exists   = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'resolved_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 		$thumbnail_url_exists  = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'thumbnail_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 		$health_checked_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'health_checked_at' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$dead_confirmed_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'dead_confirmed_at' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
-		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists || ! $resolved_url_exists || ! $thumbnail_url_exists || ! $health_checked_exists ) {
+		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists || ! $resolved_url_exists || ! $thumbnail_url_exists || ! $health_checked_exists || ! $dead_confirmed_exists ) {
 			self::create_table();
 			update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
 		}
@@ -122,14 +123,25 @@ class ALM_Install {
 		//
 		// resolved_url/resolved_at (see ALM_Shortener_Resolver/_Scanner),
 		// thumbnail_url/thumbnail_fetched_at (see ALM_Thumbnail_Fetcher),
-		// and health_checked_at (see ALM_Link_Health_Checker/_Scanner)
-		// all live on the link row itself, not a shared cache table like
-		// wp_alm_domains below -- unlike the domain-content-check cache
-		// (one row per *domain*, shared by every link on it), a
-		// shortener's real destination, a product's photo, and a
-		// specific link's own reachability are all unique per link, not
-		// per domain (the same domain can have one dead product page and
-		// ten live ones).
+		// health_checked_at (see ALM_Link_Health_Checker/_Scanner), and
+		// dead_confirmed_at all live on the link row itself, not a
+		// shared cache table like wp_alm_domains below -- unlike the
+		// domain-content-check cache (one row per *domain*, shared by
+		// every link on it), a shortener's real destination, a product's
+		// photo, and a specific link's own reachability are all unique
+		// per link, not per domain (the same domain can have one dead
+		// product page and ten live ones).
+		//
+		// dead_confirmed_at specifically: distinct from status=stale
+		// itself, which is overloaded to mean two different things --
+		// "the scanner didn't rediscover this in post content" (the
+		// original meaning) and "the health checker confirmed the
+		// destination is actually dead" (this column). Set only by
+		// ALM_Link_Health_Scanner on a confirmed-dead result, cleared by
+		// ALM_Scanner/ALM_Shortener_Scanner the moment a previously-stale
+		// row is reclassified to anything else -- see their own
+		// docblocks. Lets ALM_Links_List_Table's "Dead" tab show only
+		// links actually worth removing, not every stale row.
 		$sql = "CREATE TABLE {$table_name} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			post_id BIGINT UNSIGNED NOT NULL,
@@ -148,6 +160,7 @@ class ALM_Install {
 			thumbnail_url TEXT NULL,
 			thumbnail_fetched_at DATETIME NULL DEFAULT NULL,
 			health_checked_at DATETIME NULL DEFAULT NULL,
+			dead_confirmed_at DATETIME NULL DEFAULT NULL,
 			PRIMARY KEY  (id),
 			KEY post_id (post_id),
 			KEY provider (provider),

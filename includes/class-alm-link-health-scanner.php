@@ -108,11 +108,17 @@ class ALM_Link_Health_Scanner {
 
 		// Confirmed dead -- moved out of the Candidate list the same way
 		// ALM_Shortener_Scanner already moves a confirmed-dead shortlink
-		// to stale, so it stops reading as a live opportunity. Alive or
-		// merely inconclusive (a 403, a timeout, ...) both leave status
-		// untouched -- "still don't know" beats a wrong guess either way.
+		// to stale, so it stops reading as a live opportunity.
+		// dead_confirmed_at is the one thing that distinguishes this row
+		// from an ordinary "not rediscovered by a scan" stale link --
+		// see ALM_Install::create_table()'s docblock for why status=stale
+		// alone can't carry that distinction. Alive or merely
+		// inconclusive (a 403, a timeout, ...) both leave status (and
+		// dead_confirmed_at) untouched -- "still don't know" beats a
+		// wrong guess either way.
 		if ( $result['dead'] ) {
-			$data['status'] = ALM_Install::STATUS_STALE;
+			$data['status']            = ALM_Install::STATUS_STALE;
+			$data['dead_confirmed_at'] = current_time( 'mysql' );
 		}
 
 		$wpdb->update( $table, $data, array( 'id' => $id ) );

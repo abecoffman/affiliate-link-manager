@@ -120,6 +120,7 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		$row = $this->get_row( $id );
 		$this->assertSame( ALM_Install::STATUS_STALE, $row['status'] );
 		$this->assertNotNull( $row['health_checked_at'] );
+		$this->assertNotNull( $row['dead_confirmed_at'], 'A confirmed-dead result must set dead_confirmed_at so ALM_Links_List_Table\'s "Dead" tab can find it -- see ALM_Install::create_table()\'s docblock.' );
 	}
 
 	public function test_a_bot_blocked_candidate_stays_a_candidate() {
@@ -131,6 +132,7 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		$row = $this->get_row( $id );
 		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $row['status'], 'A 403 is ambiguous (real, live retailers block automated requests) -- must not be demoted.' );
 		$this->assertNotNull( $row['health_checked_at'], 'Still marked checked, so it is not retried every single batch.' );
+		$this->assertNull( $row['dead_confirmed_at'], 'Ambiguous, not confirmed dead -- must not appear on the "Dead" tab.' );
 	}
 
 	public function test_a_live_candidate_stays_a_candidate() {
@@ -142,6 +144,7 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		$row = $this->get_row( $id );
 		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $row['status'] );
 		$this->assertNotNull( $row['health_checked_at'] );
+		$this->assertNull( $row['dead_confirmed_at'] );
 	}
 
 	public function test_active_and_already_stale_links_are_never_checked() {

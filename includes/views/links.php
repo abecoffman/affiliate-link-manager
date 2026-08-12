@@ -124,6 +124,50 @@ if ( ! defined( 'ABSPATH' ) ) {
 		// by design. See that constant's own docblock for why a second,
 		// explicit field here was a real bug, not redundant safety.
 		?>
+
+		<?php
+		// The actual point of this round: the "Remove from Post" bulk
+		// action already existed, but buried in a generic dropdown +
+		// the Edit modal's footer -- effectively invisible ("I don't
+		// actually see that utility itself"). This puts it directly in
+		// front of an admin already looking at exactly the links it
+		// applies to. Every row on this tab is already confirmed dead
+		// (see ALM_Links_List_Table::prepare_items()'s ?status=dead
+		// handling), so this button reuses the exact same, already-
+		// tested remove_dead_links bulk action -- just pre-selecting
+		// every row on the current page rather than requiring the admin
+		// to already know the dropdown entry exists. Scoped to "this
+		// page" deliberately, not a claimed site-wide total: only rows
+		// with a checkbox actually on screen can be selected this way.
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab selection, not a state-changing action.
+		if ( isset( $_GET['status'] ) && 'dead' === $_GET['status'] && ! empty( $list_table->items ) ) :
+			?>
+			<p class="alm-dead-links-banner">
+				<?php
+				printf(
+					/* translators: %s: link text describing how many links are shown */
+					esc_html__( 'These %s are confirmed dead -- their destination no longer works.', 'affiliate-link-manager' ),
+					esc_html(
+						sprintf(
+							/* translators: %d: number of dead links shown on this page */
+							_n( '%d link', '%d links', count( $list_table->items ), 'affiliate-link-manager' ),
+							count( $list_table->items )
+						)
+					)
+				);
+				?>
+				<button type="submit" id="alm-remove-all-dead" class="button button-primary">
+					<?php
+					printf(
+						/* translators: %d: number of dead links on this page */
+						esc_html__( 'Remove These %d From Their Posts', 'affiliate-link-manager' ),
+						count( $list_table->items )
+					);
+					?>
+				</button>
+			</p>
+		<?php endif; ?>
+
 		<div class="alm-table-scroll">
 			<?php $list_table->display(); ?>
 		</div>

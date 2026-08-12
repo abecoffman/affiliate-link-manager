@@ -229,7 +229,7 @@ class ALM_Scanner {
 		$now   = current_time( 'mysql' );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- {$table} is a table name (not user input, can't be a placeholder); the real user-supplied values are all passed through prepare() below.
-		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT id, status FROM {$table} WHERE post_id = %d AND adapter = %s AND location = %s", $post_id, $adapter_id, $link['location'] ), ARRAY_A );
+		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT id, status, dead_confirmed_at FROM {$table} WHERE post_id = %d AND adapter = %s AND location = %s", $post_id, $adapter_id, $link['location'] ), ARRAY_A );
 
 		$data = array(
 			'post_id'     => $post_id,
@@ -259,6 +259,16 @@ class ALM_Scanner {
 		// other status is safe to recompute fresh on every sighting.
 		if ( ! $existing || ALM_Install::STATUS_IGNORED !== $existing['status'] ) {
 			$data['status'] = $classified_status;
+		}
+
+		// A previously-stale row being rediscovered here is, by
+		// definition, moving to a non-stale status (this method never
+		// assigns STATUS_STALE itself -- only sweep_stale_links() does)
+		// -- any dead_confirmed_at verdict from before no longer applies
+		// and must not silently carry forward onto whatever this link's
+		// status becomes now. See ALM_Install::create_table()'s docblock.
+		if ( $existing && ALM_Install::STATUS_STALE === $existing['status'] && ! empty( $existing['dead_confirmed_at'] ) ) {
+			$data['dead_confirmed_at'] = null;
 		}
 
 		if ( $existing ) {

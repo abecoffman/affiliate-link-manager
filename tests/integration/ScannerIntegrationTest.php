@@ -199,6 +199,46 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * @covers ALM_Install
+	 */
+	public function test_dead_confirmed_at_is_cleared_when_a_previously_stale_link_is_rediscovered() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://go.shopmy.us/p-777">item</a></p>',
+			)
+		);
+
+		$this->scanner->scan_batch( 0, 10 );
+		$rows = $this->get_links_for_post( $post_id );
+
+		// Simulate a prior ALM_Link_Health_Scanner verdict: the link
+		// briefly went stale-and-confirmed-dead (e.g. it was removed
+		// from the post, swept stale, then health-checked) before
+		// being restored to the post and rediscovered here.
+		global $wpdb;
+		$wpdb->update(
+			ALM_Install::table_name(),
+			array(
+				'status'            => ALM_Install::STATUS_STALE,
+				'dead_confirmed_at' => current_time( 'mysql' ),
+			),
+			array( 'id' => $rows[0]['id'] )
+		);
+
+		// Re-scan with the link still present -- it is a real
+		// rediscovery, so upsert_link() must not leave the stale
+		// dead_confirmed_at verdict behind now that the row is being
+		// reclassified to something else. See ALM_Install::create_table()'s
+		// docblock and ALM_Scanner::upsert_link().
+		$this->scanner->scan_batch( 0, 10 );
+
+		$rows = $this->get_links_for_post( $post_id );
+		$this->assertNotSame( ALM_Install::STATUS_STALE, $rows[0]['status'] );
+		$this->assertNull( $rows[0]['dead_confirmed_at'] );
+	}
+
+	/**
 	 * @covers ALM_Candidate_Classifier
 	 */
 	public function test_unclassified_links_are_split_into_candidates_and_noise() {

@@ -167,12 +167,18 @@ class ALM_Shortener_Scanner {
 		if ( $result['dead'] ) {
 			// Confirmed dead (404/410 from the shortener itself) -- not
 			// a real opportunity anymore, marked stale rather than left
-			// looking like an untouched Candidate forever.
+			// looking like an untouched Candidate forever. dead_confirmed_at
+			// set here too, same as ALM_Link_Health_Scanner's own
+			// confirmed-dead branch, so ALM_Links_List_Table's "Dead" tab
+			// shows every confirmed-dead link regardless of which
+			// mechanism found it -- see ALM_Install::create_table()'s
+			// docblock for why status=stale alone can't carry this.
 			$wpdb->update(
 				$table,
 				array(
-					'resolved_at' => $now,
-					'status'      => ALM_Install::STATUS_STALE,
+					'resolved_at'       => $now,
+					'status'            => ALM_Install::STATUS_STALE,
+					'dead_confirmed_at' => $now,
 				),
 				array( 'id' => $row['id'] )
 			);
@@ -208,6 +214,15 @@ class ALM_Shortener_Scanner {
 		if ( ! ( $matched_provider instanceof ALM_Provider_Generic ) ) {
 			$data['provider'] = $matched_provider->get_id();
 			$data['status']   = ALM_Install::STATUS_ACTIVE;
+
+			// Narrow but real: a shortener-domain link could have been
+			// marked stale-and-dead-confirmed by ALM_Link_Health_Scanner
+			// before this scanner ever got to expand it. Reclassifying
+			// it to active here must not leave a stale dead_confirmed_at
+			// verdict behind -- same reasoning as ALM_Scanner::upsert_link().
+			if ( ALM_Install::STATUS_STALE === $row['status'] && ! empty( $row['dead_confirmed_at'] ) ) {
+				$data['dead_confirmed_at'] = null;
+			}
 		}
 
 		$wpdb->update( $table, $data, array( 'id' => $row['id'] ) );

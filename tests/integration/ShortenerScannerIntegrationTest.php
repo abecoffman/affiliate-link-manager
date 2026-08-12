@@ -175,6 +175,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'stale', $row['status'] );
 		$this->assertNull( $row['resolved_url'] );
 		$this->assertNotNull( $row['resolved_at'], 'Marked resolved even though dead -- must not be retried every batch.' );
+		$this->assertNotNull( $row['dead_confirmed_at'], 'Confirmed dead here too -- ALM_Links_List_Table\'s "Dead" tab must show it regardless of which scanner found it.' );
 	}
 
 	public function test_an_inconclusive_fetch_leaves_status_untouched_but_marks_resolved_at() {
@@ -191,6 +192,43 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'convertible', $row['status'], 'Inconclusive -- must not change status on a guess.' );
 		$this->assertNull( $row['resolved_url'] );
 		$this->assertNotNull( $row['resolved_at'] );
+		$this->assertNull( $row['dead_confirmed_at'] );
+	}
+
+	/**
+	 * @covers ALM_Install
+	 */
+	public function test_reclassifying_to_active_clears_a_prior_dead_confirmed_verdict() {
+		$id = $this->insert_link( 'http://bit.ly/abc123' );
+
+		// Simulate a prior ALM_Link_Health_Scanner verdict on this exact
+		// shortener link -- it was already confirmed dead before this
+		// scanner ever got a chance to expand and reclassify it.
+		global $wpdb;
+		$wpdb->update(
+			ALM_Install::table_name(),
+			array(
+				'status'            => ALM_Install::STATUS_STALE,
+				'dead_confirmed_at' => current_time( 'mysql' ),
+			),
+			array( 'id' => $id )
+		);
+
+		$this->fake_http_chain(
+			array(
+				'http://bit.ly/abc123' => array(
+					'status'   => 301,
+					'location' => 'https://amzn.to/manually-generated',
+				),
+				'https://amzn.to/manually-generated' => array( 'status' => 200 ),
+			)
+		);
+
+		$this->scanner->check_batch( 10 );
+
+		$row = $this->get_row( $id );
+		$this->assertSame( 'active', $row['status'], 'A confident provider match reclassifies to active even from a prior stale/dead verdict.' );
+		$this->assertNull( $row['dead_confirmed_at'], 'Reclassifying away from stale must not leave a stale dead-confirmation behind.' );
 	}
 
 	public function test_a_non_shortener_link_is_never_touched() {

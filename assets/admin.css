@@ -217,6 +217,25 @@
 	margin: 16px 0;
 }
 
+/* Dead-links tab banner (includes/views/links.php) -- the "Remove from
+   Post" bulk action already existed, but buried in a generic dropdown
+   nobody could reasonably be expected to find; this puts it directly
+   in front of an admin already looking at exactly the links it's
+   for. Amber/warning-toned (not the neutral blue .alm-filtered-notice
+   uses above) since every row on this tab is, by definition, something
+   worth acting on, not just a passive filter state. */
+.alm-dead-links-banner {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+	background: #fcf0d7;
+	border-left: 4px solid #dba617;
+	padding: 10px 12px;
+	margin: 16px 0;
+}
+
 /* Dashboard Tasks table: one row per background operation (Scan, Check
    Domains, Expand Shortened Links), all the same shape -- rides on
    wp-admin's own native .widefat/.striped table styling (the same
