@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.14.2
+ * Version:     1.15.0
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.14.2' );
+define( 'ALM_VERSION', '1.15.0' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -46,6 +46,8 @@ require_once ALM_PATH . 'includes/class-alm-network-signal-scanner.php';
 require_once ALM_PATH . 'includes/class-alm-shortener-resolver.php';
 require_once ALM_PATH . 'includes/class-alm-shortener-scanner.php';
 require_once ALM_PATH . 'includes/class-alm-thumbnail-fetcher.php';
+require_once ALM_PATH . 'includes/class-alm-link-health-checker.php';
+require_once ALM_PATH . 'includes/class-alm-link-health-scanner.php';
 require_once ALM_PATH . 'includes/class-alm-admin.php';
 
 register_activation_hook( __FILE__, array( 'ALM_Install', 'activate' ) );
@@ -71,6 +73,16 @@ function alm_run_domain_recheck_cron() {
 	// this well clear of a shared host's max_execution_time even on a
 	// slow day for the domains being checked.
 	$scanner->check_batch( 20 );
+
+	// Piggybacks the same daily cron event rather than adding a second
+	// one for a very similar "housekeeping nobody's watching" job --
+	// see ALM_Link_Health_Scanner's own docblock for why this needs to
+	// keep re-running rather than being a one-off: a link marked stale
+	// here stays that way only until the next full Scan naturally
+	// rediscovers it in post content, at which point it needs this same
+	// cron to catch it again.
+	$health_scanner = new ALM_Link_Health_Scanner( new ALM_Link_Health_Checker() );
+	$health_scanner->check_batch( 10, true );
 }
 add_action( 'alm_domain_recheck_cron', 'alm_run_domain_recheck_cron' );
 
@@ -91,11 +103,12 @@ function alm_init() {
 	$shortener_resolver     = new ALM_Shortener_Resolver();
 	$shortener_scanner      = new ALM_Shortener_Scanner( $shortener_resolver, $providers );
 	$thumbnail_fetcher      = new ALM_Thumbnail_Fetcher();
+	$link_health_scanner    = new ALM_Link_Health_Scanner( new ALM_Link_Health_Checker() );
 
 	if ( is_admin() ) {
 		require_once ALM_PATH . 'includes/class-alm-links-list-table.php';
 
-		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter, $network_signal_scanner, $shortener_scanner, $thumbnail_fetcher );
+		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter, $network_signal_scanner, $shortener_scanner, $thumbnail_fetcher, $link_health_scanner );
 		$admin->init();
 	}
 }

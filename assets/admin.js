@@ -223,6 +223,74 @@
 	}
 
 	/**
+	 * Check Candidate Links: same no-offset-cursor/`first`-flag shape as
+	 * Check Domains and Expand Shortened Links above -- ALM_Link_Health_Scanner
+	 * always asks for "the next few candidates still needing a check,"
+	 * and a link drops out of that pool for good (health_checked_at
+	 * gets set) once checked.
+	 */
+	var linkHealthButton = document.getElementById( 'alm-check-link-health' );
+	var linkHealthProgress = document.getElementById( 'alm-link-health-progress' );
+
+	if ( linkHealthButton ) {
+		var linksHealthCheckedSoFar = 0;
+
+		var setLinkHealthProgressText = function ( text ) {
+			linkHealthProgress.hidden = false;
+			linkHealthProgress.textContent = text;
+		};
+
+		var checkNextLinkHealthBatch = function ( isFirst ) {
+			var body = new FormData();
+			body.append( 'action', almAdmin.linkHealthAction );
+			body.append( 'nonce', almAdmin.nonce );
+			body.append( 'first', isFirst ? '1' : '0' );
+
+			fetch( almAdmin.ajaxUrl, {
+				method: 'POST',
+				credentials: 'same-origin',
+				body: body,
+			} )
+				.then( function ( response ) {
+					return response.json();
+				} )
+				.then( function ( json ) {
+					if ( ! json.success ) {
+						setLinkHealthProgressText( almAdmin.strings.error );
+						linkHealthButton.disabled = false;
+						return;
+					}
+
+					var data = json.data;
+					linksHealthCheckedSoFar += data.checked;
+
+					var total = almAdmin.linkHealthTotal || 0;
+					var shown = total ? Math.min( linksHealthCheckedSoFar, total ) : linksHealthCheckedSoFar;
+					setLinkHealthProgressText( almAdmin.strings.checkingLinkHealth + ' (' + shown + ( total ? ' / ' + total : '' ) + ')' );
+
+					if ( data.done ) {
+						setLinkHealthProgressText( almAdmin.strings.linkHealthDone );
+						window.location.reload();
+						return;
+					}
+
+					checkNextLinkHealthBatch( false );
+				} )
+				.catch( function () {
+					setLinkHealthProgressText( almAdmin.strings.error );
+					linkHealthButton.disabled = false;
+				} );
+		};
+
+		linkHealthButton.addEventListener( 'click', function () {
+			linkHealthButton.disabled = true;
+			linksHealthCheckedSoFar = 0;
+			setLinkHealthProgressText( almAdmin.strings.checkingLinkHealth );
+			checkNextLinkHealthBatch( true );
+		} );
+	}
+
+	/**
 	 * Edit-link modal: opened by clicking a row's own Link cell
 	 * (ALM_Links_List_Table::column_link()), which carries everything
 	 * the modal needs in data-* attributes -- no fetch needed just to

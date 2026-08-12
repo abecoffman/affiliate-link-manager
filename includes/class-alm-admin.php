@@ -20,6 +20,7 @@ class ALM_Admin {
 	const AJAX_MATCH_PROVIDER_ACTION   = 'alm_match_provider';
 	const AJAX_EXPAND_SHORTENER_ACTION = 'alm_expand_shorteners_batch';
 	const AJAX_FETCH_THUMBNAIL_ACTION  = 'alm_fetch_thumbnail';
+	const AJAX_LINK_HEALTH_ACTION      = 'alm_check_link_health_batch';
 	const NONCE_ACTION                 = 'alm_admin';
 	const SETTINGS_NONCE               = 'alm_settings';
 	const CAPABILITY                   = 'manage_options';
@@ -66,7 +67,12 @@ class ALM_Admin {
 	 */
 	private $thumbnail_fetcher;
 
-	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner, ALM_Shortener_Scanner $shortener_scanner, ALM_Thumbnail_Fetcher $thumbnail_fetcher ) {
+	/**
+	 * @var ALM_Link_Health_Scanner
+	 */
+	private $link_health_scanner;
+
+	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner, ALM_Shortener_Scanner $shortener_scanner, ALM_Thumbnail_Fetcher $thumbnail_fetcher, ALM_Link_Health_Scanner $link_health_scanner ) {
 		$this->scanner                = $scanner;
 		$this->providers              = $providers;
 		$this->adapters               = $adapters;
@@ -75,6 +81,7 @@ class ALM_Admin {
 		$this->network_signal_scanner = $network_signal_scanner;
 		$this->shortener_scanner      = $shortener_scanner;
 		$this->thumbnail_fetcher      = $thumbnail_fetcher;
+		$this->link_health_scanner    = $link_health_scanner;
 	}
 
 	public function init() {
@@ -86,6 +93,7 @@ class ALM_Admin {
 		add_action( 'wp_ajax_' . self::AJAX_MATCH_PROVIDER_ACTION, array( $this, 'handle_match_provider' ) );
 		add_action( 'wp_ajax_' . self::AJAX_EXPAND_SHORTENER_ACTION, array( $this, 'handle_expand_shorteners_batch' ) );
 		add_action( 'wp_ajax_' . self::AJAX_FETCH_THUMBNAIL_ACTION, array( $this, 'handle_fetch_thumbnail' ) );
+		add_action( 'wp_ajax_' . self::AJAX_LINK_HEALTH_ACTION, array( $this, 'handle_check_link_health_batch' ) );
 		add_action( 'admin_init', array( $this, 'handle_settings_forms' ) );
 	}
 
@@ -169,10 +177,12 @@ class ALM_Admin {
 				'matchProviderAction'    => self::AJAX_MATCH_PROVIDER_ACTION,
 				'expandShortenersAction' => self::AJAX_EXPAND_SHORTENER_ACTION,
 				'fetchThumbnailAction'   => self::AJAX_FETCH_THUMBNAIL_ACTION,
+				'linkHealthAction'       => self::AJAX_LINK_HEALTH_ACTION,
 				'nonce'                  => wp_create_nonce( self::NONCE_ACTION ),
 				'total'                  => $this->scanner->count_scannable_posts(),
 				'domainsTotal'           => $this->domain_scanner->count_domains_needing_check(),
 				'shortenersTotal'        => $this->shortener_scanner->count_pending(),
+				'linkHealthTotal'        => $this->link_health_scanner->count_pending(),
 				// The bulk "Convert to [Provider]" action's own confirm()
 				// text needs a provider label by id -- the Edit modal no
 				// longer does (it infers the provider from the URL server-
@@ -189,6 +199,8 @@ class ALM_Admin {
 					'checkDomains'         => __( 'Check Domains', 'affiliate-link-manager' ),
 					'expandingShorteners'  => __( 'Expanding shortened links…', 'affiliate-link-manager' ),
 					'expandShortenersDone' => __( 'Done — reloading…', 'affiliate-link-manager' ),
+					'checkingLinkHealth'   => __( 'Checking candidate links…', 'affiliate-link-manager' ),
+					'linkHealthDone'       => __( 'Done — reloading…', 'affiliate-link-manager' ),
 					'editModalTitle'       => __( 'Edit link', 'affiliate-link-manager' ),
 					'editPost'             => __( 'Edit Post', 'affiliate-link-manager' ),
 					'view'                 => __( 'View', 'affiliate-link-manager' ),
@@ -293,6 +305,22 @@ class ALM_Admin {
 		// per link -- same small-batch reasoning as Check Domains above.
 		$is_first_of_run = ! empty( $_POST['first'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above via check_ajax_referer().
 		$result          = $this->shortener_scanner->check_batch( 5, $is_first_of_run );
+
+		wp_send_json_success( $result );
+	}
+
+	public function handle_check_link_health_batch() {
+		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'affiliate-link-manager' ) ), 403 );
+		}
+
+		// Real HTTP requests, with a retry on a suspected-dead result --
+		// same small-batch reasoning as Check Domains above, doubly so
+		// here since several candidates often share one retailer domain.
+		$is_first_of_run = ! empty( $_POST['first'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above via check_ajax_referer().
+		$result          = $this->link_health_scanner->check_batch( 5, $is_first_of_run );
 
 		wp_send_json_success( $result );
 	}
@@ -633,6 +661,20 @@ class ALM_Admin {
 				'button_label' => __( 'Expand Shortened Links', 'affiliate-link-manager' ),
 				'primary'      => false,
 			),
+			array(
+				'id'           => 'link_health',
+				'label'        => __( 'Check Candidate Links', 'affiliate-link-manager' ),
+				'description'  => __( 'Confirms each candidate link\'s destination still actually works -- dead domains and missing pages move out of your opportunities list instead of sitting there unusable.', 'affiliate-link-manager' ),
+				'last_run'     => $this->format_last_run(
+					get_option( 'alm_last_link_health_time', '' ),
+					$this->format_link_health_delta( get_option( 'alm_last_link_health_delta', array() ) )
+				),
+				'pending'      => $this->link_health_scanner->count_pending(),
+				'button_id'    => 'alm-check-link-health',
+				'progress_id'  => 'alm-link-health-progress',
+				'button_label' => __( 'Check Candidate Links', 'affiliate-link-manager' ),
+				'primary'      => false,
+			),
 		);
 	}
 
@@ -730,6 +772,28 @@ class ALM_Admin {
 			__( '%1$d tracked, %2$d marked stale', 'affiliate-link-manager' ),
 			$reclassified,
 			$stale
+		);
+	}
+
+	/**
+	 * @param array{confirmed_dead?:int,still_fine?:int} $delta
+	 * @return string
+	 */
+	private function format_link_health_delta( array $delta ) {
+		if ( empty( $delta ) ) {
+			return '';
+		}
+
+		$confirmed_dead = isset( $delta['confirmed_dead'] ) ? (int) $delta['confirmed_dead'] : 0;
+
+		if ( 0 === $confirmed_dead ) {
+			return __( 'all still good', 'affiliate-link-manager' );
+		}
+
+		return sprintf(
+			/* translators: %d: number of candidate links confirmed dead and marked stale */
+			__( '%d confirmed dead', 'affiliate-link-manager' ),
+			$confirmed_dead
 		);
 	}
 }
