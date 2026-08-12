@@ -30,6 +30,17 @@ class ALM_Thumbnail_Fetcher {
 	const TIMEOUT = 8;
 
 	/**
+	 * Matches ALM_Shortener_Resolver::MAX_HOPS -- found live, sampling
+	 * 40 real honestlywtf links: RewardStyle's own rstyle.me redirects
+	 * through more than 3 hops before reaching a real page (tracking/
+	 * attribution layers, then the retailer's own affiliate redirect,
+	 * then the product page itself), so the previous limit of 3 was
+	 * failing "too many redirects" on this plugin's single dominant
+	 * network before ever reaching a page worth checking for an image.
+	 */
+	const MAX_REDIRECTS = 5;
+
+	/**
 	 * @param string $url
 	 * @return array{thumbnail_url:string|null}
 	 */
@@ -38,7 +49,7 @@ class ALM_Thumbnail_Fetcher {
 			$url,
 			array(
 				'timeout'     => self::TIMEOUT,
-				'redirection' => 3,
+				'redirection' => self::MAX_REDIRECTS,
 				'user-agent'  => $this->user_agent(),
 			)
 		);
