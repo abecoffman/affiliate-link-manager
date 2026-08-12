@@ -202,7 +202,7 @@ class ALM_Admin {
 					'checkDomains'         => __( 'Check Domains', 'affiliate-link-manager' ),
 					'expandingShorteners'  => __( 'Expanding shortened links…', 'affiliate-link-manager' ),
 					'expandShortenersDone' => __( 'Done — reloading…', 'affiliate-link-manager' ),
-					'checkingLinkHealth'   => __( 'Checking candidate links…', 'affiliate-link-manager' ),
+					'checkingLinkHealth'   => __( 'Checking link health…', 'affiliate-link-manager' ),
 					'linkHealthDone'       => __( 'Done — reloading…', 'affiliate-link-manager' ),
 					'editModalTitle'       => __( 'Edit link', 'affiliate-link-manager' ),
 					'editPost'             => __( 'Edit Post', 'affiliate-link-manager' ),
@@ -712,7 +712,7 @@ class ALM_Admin {
 			),
 			array(
 				'id'           => 'link_health',
-				'label'        => __( 'Check Candidate Links', 'affiliate-link-manager' ),
+				'label'        => __( 'Check Link Health', 'affiliate-link-manager' ),
 				'description'  => __( 'Confirms each candidate link\'s destination still actually works -- dead domains and missing pages move out of your opportunities list instead of sitting there unusable.', 'affiliate-link-manager' ),
 				'last_run'     => $this->format_last_run(
 					get_option( 'alm_last_link_health_time', '' ),
@@ -721,7 +721,7 @@ class ALM_Admin {
 				'pending'      => $this->link_health_scanner->count_pending(),
 				'button_id'    => 'alm-check-link-health',
 				'progress_id'  => 'alm-link-health-progress',
-				'button_label' => __( 'Check Candidate Links', 'affiliate-link-manager' ),
+				'button_label' => __( 'Check Link Health', 'affiliate-link-manager' ),
 				'primary'      => false,
 			),
 		);

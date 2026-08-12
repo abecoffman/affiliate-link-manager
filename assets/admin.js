@@ -223,7 +223,7 @@
 	}
 
 	/**
-	 * Check Candidate Links: same no-offset-cursor/`first`-flag shape as
+	 * Check Link Health: same no-offset-cursor/`first`-flag shape as
 	 * Check Domains and Expand Shortened Links above -- ALM_Link_Health_Scanner
 	 * always asks for "the next few candidates still needing a check,"
 	 * and a link drops out of that pool for good (health_checked_at
