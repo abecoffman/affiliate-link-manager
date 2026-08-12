@@ -79,6 +79,21 @@
 			setProgressText( almAdmin.strings.scanning );
 			scanNextBatch( 0 );
 		} );
+
+		// A run can already be active server-side on page load -- started
+		// from an earlier click, and possibly still being carried forward
+		// by alm_continue_batch_run() even though that earlier tab is long
+		// closed (see ALM_Background_Runner). Join it from its persisted
+		// cursor instead of sitting idle until a second click, which would
+		// otherwise look exactly like nothing had ever happened.
+		if ( almAdmin.runState && almAdmin.runState.scan && almAdmin.runState.scan.active ) {
+			runButton.disabled = true;
+			scannedSoFar = almAdmin.runState.scan.cursor;
+			var resumeTotal = almAdmin.total || 0;
+			var resumeShown = resumeTotal ? Math.min( scannedSoFar, resumeTotal ) : scannedSoFar;
+			setProgressText( almAdmin.strings.scanning + ' (' + resumeShown + ( resumeTotal ? ' / ' + resumeTotal : '' ) + ')' );
+			scanNextBatch( scannedSoFar );
+		}
 	}
 
 	/**
@@ -152,6 +167,16 @@
 			setDomainProgressText( almAdmin.strings.checkingDomains );
 			checkNextDomainBatch( true );
 		} );
+
+		// See the matching comment on Run Scan above -- same reason.
+		if ( almAdmin.runState && almAdmin.runState.domains && almAdmin.runState.domains.active ) {
+			checkDomainsButton.disabled = true;
+			domainsCheckedSoFar = almAdmin.runState.domains.processed;
+			var resumeDomainsTotal = almAdmin.domainsTotal || 0;
+			var resumeDomainsShown = resumeDomainsTotal ? Math.min( domainsCheckedSoFar, resumeDomainsTotal ) : domainsCheckedSoFar;
+			setDomainProgressText( almAdmin.strings.checkingDomains + ' (' + resumeDomainsShown + ( resumeDomainsTotal ? ' / ' + resumeDomainsTotal : '' ) + ')' );
+			checkNextDomainBatch( false );
+		}
 	}
 
 	/**
@@ -220,6 +245,16 @@
 			setShortenerProgressText( almAdmin.strings.expandingShorteners );
 			expandNextShortenerBatch( true );
 		} );
+
+		// See the matching comment on Run Scan above -- same reason.
+		if ( almAdmin.runState && almAdmin.runState.shorteners && almAdmin.runState.shorteners.active ) {
+			expandShortenersButton.disabled = true;
+			shortenersCheckedSoFar = almAdmin.runState.shorteners.processed;
+			var resumeShortenersTotal = almAdmin.shortenersTotal || 0;
+			var resumeShortenersShown = resumeShortenersTotal ? Math.min( shortenersCheckedSoFar, resumeShortenersTotal ) : shortenersCheckedSoFar;
+			setShortenerProgressText( almAdmin.strings.expandingShorteners + ' (' + resumeShortenersShown + ( resumeShortenersTotal ? ' / ' + resumeShortenersTotal : '' ) + ')' );
+			expandNextShortenerBatch( false );
+		}
 	}
 
 	/**
@@ -288,6 +323,16 @@
 			setLinkHealthProgressText( almAdmin.strings.checkingLinkHealth );
 			checkNextLinkHealthBatch( true );
 		} );
+
+		// See the matching comment on Run Scan above -- same reason.
+		if ( almAdmin.runState && almAdmin.runState.link_health && almAdmin.runState.link_health.active ) {
+			linkHealthButton.disabled = true;
+			linksHealthCheckedSoFar = almAdmin.runState.link_health.processed;
+			var resumeLinkHealthTotal = almAdmin.linkHealthTotal || 0;
+			var resumeLinkHealthShown = resumeLinkHealthTotal ? Math.min( linksHealthCheckedSoFar, resumeLinkHealthTotal ) : linksHealthCheckedSoFar;
+			setLinkHealthProgressText( almAdmin.strings.checkingLinkHealth + ' (' + resumeLinkHealthShown + ( resumeLinkHealthTotal ? ' / ' + resumeLinkHealthTotal : '' ) + ')' );
+			checkNextLinkHealthBatch( false );
+		}
 	}
 
 	/**

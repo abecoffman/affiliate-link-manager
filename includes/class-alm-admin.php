@@ -192,6 +192,18 @@ class ALM_Admin {
 				// side, see ALM_Admin::handle_match_provider()), so this is
 				// bulk-only now.
 				'providers'              => $this->get_provider_capabilities(),
+				// Lets admin.js auto-resume a task's own polling loop on
+				// a fresh page load if a run is already active (started
+				// from an earlier click, possibly still being carried
+				// forward by alm_continue_batch_run() right now) instead
+				// of only ever starting on an explicit click -- see
+				// ALM_Background_Runner.
+				'runState'               => array(
+					'scan'        => ALM_Background_Runner::get_state( 'scan' ),
+					'domains'     => ALM_Background_Runner::get_state( 'domains' ),
+					'shorteners'  => ALM_Background_Runner::get_state( 'shorteners' ),
+					'link_health' => ALM_Background_Runner::get_state( 'link_health' ),
+				),
 				'strings'                => array(
 					'scanning'             => __( 'Scanning…', 'affiliate-link-manager' ),
 					'scanDone'             => __( 'Scan complete — reloading…', 'affiliate-link-manager' ),
@@ -268,13 +280,18 @@ class ALM_Admin {
 		}
 
 		$offset     = isset( $_POST['offset'] ) ? absint( wp_unslash( $_POST['offset'] ) ) : 0;
-		$batch_size = 20;
+		$batch_size = ALM_Background_Runner::TASK_BATCH_SIZES['scan'];
 
 		$result = $this->scanner->scan_batch( $offset, $batch_size );
 
 		if ( $result['done'] ) {
 			update_option( 'alm_last_scan_time', current_time( 'mysql' ) );
 		}
+
+		// Scan has no explicit "first" flag -- offset===0 already means
+		// the same thing, same as ALM_Scanner::scan_batch() itself uses
+		// internally to decide whether to stamp alm_scan_started_at.
+		$this->track_batch_run( 'scan', 0 === $offset, $result['done'], $result['next_offset'] - $offset, $result['next_offset'] );
 
 		wp_send_json_success( $result );
 	}
@@ -294,7 +311,9 @@ class ALM_Admin {
 		// scope its "what did this run find" delta correctly -- see
 		// its check_batch() docblock.
 		$is_first_of_run = ! empty( $_POST['first'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above via check_ajax_referer().
-		$result          = $this->domain_scanner->check_batch( 5, $is_first_of_run );
+		$result          = $this->domain_scanner->check_batch( ALM_Background_Runner::TASK_BATCH_SIZES['domains'], $is_first_of_run );
+
+		$this->track_batch_run( 'domains', $is_first_of_run, $result['done'], $result['checked'] );
 
 		wp_send_json_success( $result );
 	}
@@ -309,7 +328,9 @@ class ALM_Admin {
 		// Real HTTP requests, up to ALM_Shortener_Resolver::MAX_HOPS deep
 		// per link -- same small-batch reasoning as Check Domains above.
 		$is_first_of_run = ! empty( $_POST['first'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above via check_ajax_referer().
-		$result          = $this->shortener_scanner->check_batch( 5, $is_first_of_run );
+		$result          = $this->shortener_scanner->check_batch( ALM_Background_Runner::TASK_BATCH_SIZES['shorteners'], $is_first_of_run );
+
+		$this->track_batch_run( 'shorteners', $is_first_of_run, $result['done'], $result['checked'] );
 
 		wp_send_json_success( $result );
 	}
@@ -325,9 +346,63 @@ class ALM_Admin {
 		// same small-batch reasoning as Check Domains above, doubly so
 		// here since several candidates often share one retailer domain.
 		$is_first_of_run = ! empty( $_POST['first'] ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified above via check_ajax_referer().
-		$result          = $this->link_health_scanner->check_batch( 5, $is_first_of_run );
+		$result          = $this->link_health_scanner->check_batch( ALM_Background_Runner::TASK_BATCH_SIZES['link_health'], $is_first_of_run );
+
+		$this->track_batch_run( 'link_health', $is_first_of_run, $result['done'], $result['checked'] );
 
 		wp_send_json_success( $result );
+	}
+
+	/**
+	 * Shared ALM_Background_Runner bookkeeping for all four batch
+	 * handlers above -- every one of them needs the identical "did
+	 * this call start a new run, persist how far it's gotten, prime or
+	 * cancel the WP-Cron continuation tick" logic around an otherwise
+	 * task-specific batch call. See ALM_Background_Runner's own
+	 * docblock for why this state exists (surviving the browser tab
+	 * that started a run closing) and alm_continue_batch_run() in the
+	 * main plugin file for the other side of it.
+	 *
+	 * @param string $task_id
+	 * @param bool   $is_first_of_run
+	 * @param bool   $done
+	 * @param int    $processed_this_batch
+	 * @param int    $cursor Only meaningful for 'scan' (its next_offset)
+	 *                        -- the other three tasks are DB-state-driven
+	 *                        (their own check_batch() re-queries "what's
+	 *                        still unchecked" every time) and pass 0.
+	 * @return void
+	 */
+	private function track_batch_run( $task_id, $is_first_of_run, $done, $processed_this_batch, $cursor = 0 ) {
+		if ( $done ) {
+			ALM_Background_Runner::clear_state( $task_id );
+			ALM_Background_Runner::unschedule( $task_id );
+			return;
+		}
+
+		if ( $is_first_of_run ) {
+			ALM_Background_Runner::save_state(
+				$task_id,
+				array(
+					'active'           => true,
+					'cursor'           => $cursor,
+					'processed'        => $processed_this_batch,
+					'started_at'       => current_time( 'mysql' ),
+					'reschedule_count' => 0,
+					'stalled'          => false,
+				)
+			);
+			// Primed immediately, not after some later batch -- even a
+			// tab closed right after this very first click must not
+			// leave the run stranded with nothing to continue it.
+			ALM_Background_Runner::schedule_next_tick( $task_id, ALM_Background_Runner::TASK_RESCHEDULE_DELAYS[ $task_id ] );
+			return;
+		}
+
+		$state               = ALM_Background_Runner::get_state( $task_id );
+		$state['cursor']     = $cursor;
+		$state['processed'] += $processed_this_batch;
+		ALM_Background_Runner::save_state( $task_id, $state );
 	}
 
 	/**
@@ -662,10 +737,10 @@ class ALM_Admin {
 	 * shaped cards -- see includes/views/dashboard.php. Formatting lives
 	 * here, once, rather than duplicated per task in the template.
 	 *
-	 * @return array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool}>
+	 * @return array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool,running:bool,processed_so_far:int,stalled:bool}>
 	 */
 	private function get_dashboard_tasks() {
-		return array(
+		$tasks = array(
 			array(
 				'id'           => 'scan',
 				'label'        => __( 'Scan', 'affiliate-link-manager' ),
@@ -725,6 +800,23 @@ class ALM_Admin {
 				'primary'      => false,
 			),
 		);
+
+		// Real in-progress state, not just the always-idle "click to
+		// start" shape above -- read once per task here (not inline
+		// per-array-literal above) so a run started from an earlier
+		// click, and possibly still being carried forward right now by
+		// alm_continue_batch_run() with the tab long closed, renders
+		// accurately on a fresh page load instead of looking abandoned.
+		// See ALM_Background_Runner.
+		foreach ( $tasks as &$task ) {
+			$state                    = ALM_Background_Runner::get_state( $task['id'] );
+			$task['running']          = $state['active'] && ! $state['stalled'];
+			$task['processed_so_far'] = $state['processed'];
+			$task['stalled']          = $state['stalled'];
+		}
+		unset( $task );
+
+		return $tasks;
 	}
 
 	/**

@@ -289,6 +289,19 @@
 	font-size: 13px;
 }
 
+/* Full-sentence progress states (a still-running background task's
+   real "N processed so far" status, or a stalled one) -- not the
+   short "(N / M)" counter .alm-scan-progress's own nowrap is meant
+   for. Overrides it back to normal wrapping so this text wraps inside
+   the Task column's fixed 30% width instead of overflowing/clipping. */
+.alm-scan-progress-wrap {
+	white-space: normal;
+}
+
+.alm-scan-progress-stalled {
+	color: #b32d2e;
+}
+
 /* Possible unrecognized networks: a quiet note below the Tasks table,
    not its own card -- it has no action button, so an admin can't do
    anything about it directly here; deliberately lower-key than

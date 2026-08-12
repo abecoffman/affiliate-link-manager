@@ -18,7 +18,7 @@
  * @var array<string,int>                            $status_summary
  * @var int                                           $stale_count
  * @var array<string,array{label:string,count:int,sample_url:string}> $network_signals
- * @var array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool}> $tasks
+ * @var array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool,running:bool,processed_so_far:int,stalled:bool}> $tasks
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -113,12 +113,49 @@ $alm_links_url = static function ( $args = array() ) {
 							<td><?php echo esc_html( $task['last_run'] ); ?></td>
 							<td><?php echo null === $task['pending'] ? '—' : esc_html( $task['pending'] ); ?></td>
 							<td>
-								<?php if ( null !== $task['pending'] && 0 === $task['pending'] ) : ?>
+								<?php
+								// running deliberately overrides the "0 pending" done-state
+								// here -- count_pending() is live and can transiently read 0
+								// right as a still-active run's last batch lands, before its
+								// own run-state has been cleared; the button/progress must
+								// keep showing in that split second, not flash "All caught up"
+								// and then immediately flash again to idle on the next load.
+								?>
+								<?php if ( null !== $task['pending'] && 0 === $task['pending'] && ! $task['running'] ) : ?>
 									<span class="alm-task-done"><?php esc_html_e( 'All caught up', 'affiliate-link-manager' ); ?></span>
 								<?php else : ?>
 									<button type="button" class="button<?php echo $task['primary'] ? ' button-primary' : ''; ?>" id="<?php echo esc_attr( $task['button_id'] ); ?>"><?php echo esc_html( $task['button_label'] ); ?></button>
 								<?php endif; ?>
-								<span id="<?php echo esc_attr( $task['progress_id'] ); ?>" class="alm-scan-progress" hidden></span>
+								<?php if ( $task['stalled'] ) : ?>
+									<span id="<?php echo esc_attr( $task['progress_id'] ); ?>" class="alm-scan-progress alm-scan-progress-wrap alm-scan-progress-stalled">
+										<?php esc_html_e( 'Paused after an unusually long run -- click to pick back up.', 'affiliate-link-manager' ); ?>
+									</span>
+								<?php elseif ( $task['running'] ) : ?>
+									<?php
+									// Server-rendered on a fresh page load, not left waiting on
+									// JS -- this is the direct fix for a run that was actually
+									// still making real progress via alm_continue_batch_run()
+									// looking abandoned just because the tab that started it
+									// was closed. See ALM_Background_Runner.
+									//
+									// alm-scan-progress-wrap, not the base class's nowrap: this
+									// is a full sentence, not a short "(N / M)" counter -- nowrap
+									// inside this column's fixed 30% width would overflow/clip
+									// instead of wrapping, the same class of bug already found
+									// and fixed once this session for the JS-driven text.
+									?>
+									<span id="<?php echo esc_attr( $task['progress_id'] ); ?>" class="alm-scan-progress alm-scan-progress-wrap">
+										<?php
+										printf(
+											/* translators: %d: number of items this still-running background task has processed so far */
+											esc_html__( '%d processed so far — still running in the background.', 'affiliate-link-manager' ),
+											(int) $task['processed_so_far']
+										);
+										?>
+									</span>
+								<?php else : ?>
+									<span id="<?php echo esc_attr( $task['progress_id'] ); ?>" class="alm-scan-progress" hidden></span>
+								<?php endif; ?>
 							</td>
 						</tr>
 					<?php endforeach; ?>

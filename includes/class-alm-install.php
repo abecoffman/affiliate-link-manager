@@ -230,6 +230,20 @@ class ALM_Install {
 		delete_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID );
 		delete_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID );
 
+		// ALM_Background_Runner's per-task run state -- see its own
+		// docblock. Deliberately named/deleted individually rather than
+		// looping TASK_BATCH_SIZES's keys here: uninstall.php runs in a
+		// context where that class may not be loaded/available, and this
+		// list is small and stable enough not to need it.
+		delete_option( 'alm_scan_run_state' );
+		delete_option( 'alm_domains_run_state' );
+		delete_option( 'alm_shorteners_run_state' );
+		delete_option( 'alm_link_health_run_state' );
+
 		wp_clear_scheduled_hook( 'alm_domain_recheck_cron' );
+		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'scan' ) );
+		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'domains' ) );
+		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'shorteners' ) );
+		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'link_health' ) );
 	}
 }

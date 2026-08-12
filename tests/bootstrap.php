@@ -82,3 +82,4 @@ require_once ALM_PATH . 'includes/class-alm-domain-scanner.php';
 require_once ALM_PATH . 'includes/class-alm-shortener-resolver.php';
 require_once ALM_PATH . 'includes/class-alm-thumbnail-fetcher.php';
 require_once ALM_PATH . 'includes/class-alm-link-health-checker.php';
+require_once ALM_PATH . 'includes/class-alm-background-runner.php';
