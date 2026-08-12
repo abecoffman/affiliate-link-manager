@@ -108,4 +108,8 @@ class FakePageBuilderAdapter extends \ALM_Content_Adapter {
 	public function replace_link( $post_id, $location, $old_url, $new_url ) {
 		return true;
 	}
+
+	public function remove_link( $post_id, $location, $old_url ) {
+		return true;
+	}
 }

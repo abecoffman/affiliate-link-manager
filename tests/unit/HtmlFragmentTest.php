@@ -25,6 +25,10 @@ class HtmlFragmentTestSubject {
 		return $this->replace_anchor_href( $html, $index, $old_url, $new_url );
 	}
 
+	public function unwrap( $html, $index, $old_url ) {
+		return $this->unwrap_anchor( $html, $index, $old_url );
+	}
+
 	public function context( $html, $index ) {
 		return $this->get_anchor_context( $html, $index );
 	}
@@ -210,6 +214,71 @@ class HtmlFragmentTest extends TestCase {
 
 		$this->assertSame( 'Wearing my favorite', $context['before'] );
 		$this->assertSame( 'today.', $context['after'] );
+	}
+
+	public function test_unwrap_anchor_removes_the_link_but_keeps_its_text() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<p>Wearing my favorite <a href="https://a.example.com/">Birkenstocks</a> today.</p>';
+
+		$updated = $subject->unwrap( $html, 0, 'https://a.example.com/' );
+
+		$this->assertStringNotContainsString( '<a ', $updated );
+		$this->assertStringNotContainsString( 'href', $updated );
+		$this->assertStringContainsString( 'Wearing my favorite Birkenstocks today.', $updated );
+	}
+
+	/**
+	 * Nested markup inside the anchor (bold, etc.) must survive the
+	 * unwrap intact, not get flattened to plain text -- same "preserve
+	 * real markup" principle already established for get_anchor_context().
+	 */
+	public function test_unwrap_anchor_preserves_nested_inline_markup() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<p>Shop the <a href="https://a.example.com/"><strong>sale</strong></a> now.</p>';
+
+		$updated = $subject->unwrap( $html, 0, 'https://a.example.com/' );
+
+		$this->assertStringNotContainsString( '<a ', $updated );
+		$this->assertStringContainsString( '<strong>sale</strong>', $updated );
+	}
+
+	public function test_unwrap_anchor_only_removes_the_matching_index() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<a href="https://a.example.com/">first</a><a href="https://b.example.com/">second</a>';
+
+		$updated = $subject->unwrap( $html, 1, 'https://b.example.com/' );
+
+		$this->assertStringContainsString( 'href="https://a.example.com/"', $updated );
+		$this->assertStringContainsString( 'second', $updated );
+		$this->assertStringNotContainsString( 'https://b.example.com/', $updated );
+	}
+
+	public function test_unwrap_anchor_refuses_when_url_has_changed() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<a href="https://a.example.com/">first</a>';
+
+		$result = $subject->unwrap( $html, 0, 'https://not-the-current-href.example.com/' );
+
+		$this->assertInstanceOf( \WP_Error::class, $result );
+		$this->assertStringContainsString( 'href="https://a.example.com/"', $html, 'The original (never-passed-back) $html itself must obviously be untouched -- sanity check on the test\'s own assumption.' );
+	}
+
+	public function test_unwrap_anchor_refuses_out_of_range_index() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<a href="https://a.example.com/">first</a>';
+
+		$result = $subject->unwrap( $html, 5, 'https://a.example.com/' );
+
+		$this->assertInstanceOf( \WP_Error::class, $result );
+	}
+
+	public function test_unwrap_anchor_never_leaks_the_synthetic_wrapper_div() {
+		$subject = new HtmlFragmentTestSubject();
+		$html    = '<a href="https://a.example.com/">first</a>';
+
+		$updated = $subject->unwrap( $html, 0, 'https://a.example.com/' );
+
+		$this->assertStringNotContainsString( 'alm-root', $updated );
 	}
 
 	public function test_never_leaks_the_synthetic_wrapper_div() {

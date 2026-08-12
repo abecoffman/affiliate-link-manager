@@ -74,6 +74,32 @@ class ALM_Adapter_Post_Content extends ALM_Content_Adapter {
 		return true;
 	}
 
+	public function remove_link( $post_id, $location, $old_url ) {
+		$post = get_post( $post_id );
+		if ( ! $post ) {
+			return new WP_Error( 'alm_post_not_found', __( 'Post not found.', 'affiliate-link-manager' ) );
+		}
+
+		$updated = $this->unwrap_anchor( $post->post_content, (int) $location, $old_url );
+		if ( is_wp_error( $updated ) ) {
+			return $updated;
+		}
+
+		$result = wp_update_post(
+			array(
+				'ID'           => $post_id,
+				'post_content' => $updated,
+			),
+			true
+		);
+
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		return true;
+	}
+
 	public function get_context( $post_id, $location ) {
 		$post = get_post( $post_id );
 		if ( ! $post ) {

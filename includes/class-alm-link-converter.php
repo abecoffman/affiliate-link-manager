@@ -1,8 +1,8 @@
 <?php
 /**
- * Rewrites a single wp_alm_links row's URL and/or provider.
+ * Rewrites (or removes) a single wp_alm_links row's URL/provider.
  *
- * Two distinct entry points, for two distinct UIs:
+ * Three distinct entry points, for three distinct UIs:
  * - save_url() -- the Links screen's row-level Edit modal. The admin
  *   only ever edits a destination URL; the provider is always inferred
  *   from it via ALM_Provider_Registry::match_url(), the same matching
@@ -14,15 +14,20 @@
  *   chosen explicitly (only ever a can_wrap()-capable, configured one,
  *   see ALM_Links_List_Table::get_bulk_actions()) and wrap_url() builds
  *   a new tracked URL from whatever's already there.
+ * - remove() -- "Remove from Post", for a confirmed-dead (status=stale)
+ *   link. Unlike the two above, this doesn't rewrite the row -- it
+ *   deletes it, since once the link is unwrapped out of the post
+ *   there's nothing left to track.
  *
- * Both funnel through the same private write_and_persist() so they can
- * never drift on what "save" actually does. Deliberately reuses
- * ALM_Provider::wrap_url()/can_wrap()/match_url() and
- * ALM_Content_Adapter::replace_link() exactly as already implemented
- * and tested -- no changes to either contract. See those classes'
- * docblocks for the guarantees this relies on (replace_link() verifies
- * the old URL still matches before writing and refuses via WP_Error if
- * the content changed underneath since the last scan).
+ * save_url()/convert() funnel through the same private
+ * write_and_persist() so they can never drift on what "save" actually
+ * does. Deliberately reuses ALM_Provider::wrap_url()/can_wrap()/match_url()
+ * and ALM_Content_Adapter::replace_link()/remove_link() exactly as
+ * already implemented and tested -- no changes to either contract. See
+ * those classes' docblocks for the guarantees this relies on
+ * (replace_link()/remove_link() both verify the old URL still matches
+ * before writing and refuse via WP_Error if the content changed
+ * underneath since the last scan).
  *
  * @package ALM
  */
@@ -64,6 +69,38 @@ class ALM_Link_Converter {
 		$provider = $this->providers->match_url( $url );
 
 		return $this->write_and_persist( $item, $url, $provider->get_id() );
+	}
+
+	/**
+	 * Removes a confirmed-dead link from the post entirely (unwraps the
+	 * `<a>` tag, keeps its text) and, on success, deletes the tracking
+	 * row -- once the link is out of the post there's nothing left to
+	 * track, same reasoning the bulk Delete action already uses for a
+	 * link an admin dismisses outright. Callers are expected to have
+	 * already confirmed $item['status'] is stale before calling this
+	 * (see ALM_Links_List_Table::bulk_remove()/ALM_Admin::handle_remove_link());
+	 * this method itself doesn't re-check status, only that the content
+	 * adapter can still find the link where the last scan left it.
+	 *
+	 * @param array $item A full wp_alm_links row (ARRAY_A).
+	 * @return true|WP_Error
+	 */
+	public function remove( array $item ) {
+		$adapter = $this->adapters->get_adapter( $item['adapter'] );
+		if ( ! $adapter ) {
+			return new WP_Error( 'alm_unknown_adapter', __( 'Unknown content adapter for this link.', 'affiliate-link-manager' ) );
+		}
+
+		$result = $adapter->remove_link( (int) $item['post_id'], $item['location'], $item['url'] );
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		global $wpdb;
+		$table = ALM_Install::table_name();
+		$wpdb->delete( $table, array( 'id' => (int) $item['id'] ) );
+
+		return true;
 	}
 
 	/**

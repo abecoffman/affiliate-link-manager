@@ -441,6 +441,78 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 'https://cdn.zara.com/still-the-right-photo.jpg', $row['thumbnail_url'] );
 	}
 
+	/**
+	 * "Remove from Post" -- unwraps a confirmed-dead link out of the
+	 * post entirely and, since there's nothing left to track, deletes
+	 * the row rather than updating it (the one way this differs from
+	 * save_url()/convert()).
+	 */
+	public function test_remove_unwraps_the_link_and_deletes_the_row() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://www.a-dead-retailer.example/product">boots</a> now.</p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'     => $post_id,
+				'provider'    => 'unclassified',
+				'adapter'     => 'post_content',
+				'location'    => '0',
+				'url'         => 'https://www.a-dead-retailer.example/product',
+				'anchor_text' => 'boots',
+				'status'      => 'stale',
+			)
+		);
+
+		$result = $this->converter->remove( $item );
+		$this->assertTrue( $result );
+
+		$this->assertNull( $this->get_link_row( $item['id'] ), 'The tracking row must be gone -- nothing left to track once the link is out of the post.' );
+
+		clean_post_cache( $post_id );
+		$fresh = get_post( $post_id );
+		$this->assertStringNotContainsString( '<a ', $fresh->post_content );
+		$this->assertStringContainsString( 'Get the boots now.', $fresh->post_content );
+	}
+
+	/**
+	 * A content-changed-since-scan refusal must leave both the post and
+	 * the tracking row exactly as they were -- same "leave it alone and
+	 * say why" convention as save_url()/convert().
+	 */
+	public function test_remove_leaves_everything_untouched_when_content_changed_since_the_last_scan() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.a-dead-retailer.example/product">boots</a></p>',
+			)
+		);
+
+		$item = $this->insert_link_row(
+			array(
+				'post_id'     => $post_id,
+				'provider'    => 'unclassified',
+				'adapter'     => 'post_content',
+				'location'    => '0',
+				'url'         => 'https://www.a-dead-retailer.example/different-product',
+				'anchor_text' => 'boots',
+				'status'      => 'stale',
+			)
+		);
+
+		$result = $this->converter->remove( $item );
+		$this->assertInstanceOf( WP_Error::class, $result );
+
+		$this->assertNotNull( $this->get_link_row( $item['id'] ), 'The tracking row must still exist.' );
+
+		clean_post_cache( $post_id );
+		$fresh = get_post( $post_id );
+		$this->assertStringContainsString( 'href="https://www.a-dead-retailer.example/product"', $fresh->post_content );
+	}
+
 	public function test_convert_to_an_unknown_provider_returns_an_error() {
 		$post_id = self::factory()->post->create(
 			array(

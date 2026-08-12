@@ -21,6 +21,7 @@ class ALM_Admin {
 	const AJAX_EXPAND_SHORTENER_ACTION = 'alm_expand_shorteners_batch';
 	const AJAX_FETCH_THUMBNAIL_ACTION  = 'alm_fetch_thumbnail';
 	const AJAX_LINK_HEALTH_ACTION      = 'alm_check_link_health_batch';
+	const AJAX_REMOVE_LINK_ACTION      = 'alm_remove_link';
 	const NONCE_ACTION                 = 'alm_admin';
 	const SETTINGS_NONCE               = 'alm_settings';
 	const CAPABILITY                   = 'manage_options';
@@ -94,6 +95,7 @@ class ALM_Admin {
 		add_action( 'wp_ajax_' . self::AJAX_EXPAND_SHORTENER_ACTION, array( $this, 'handle_expand_shorteners_batch' ) );
 		add_action( 'wp_ajax_' . self::AJAX_FETCH_THUMBNAIL_ACTION, array( $this, 'handle_fetch_thumbnail' ) );
 		add_action( 'wp_ajax_' . self::AJAX_LINK_HEALTH_ACTION, array( $this, 'handle_check_link_health_batch' ) );
+		add_action( 'wp_ajax_' . self::AJAX_REMOVE_LINK_ACTION, array( $this, 'handle_remove_link' ) );
 		add_action( 'admin_init', array( $this, 'handle_settings_forms' ) );
 	}
 
@@ -178,6 +180,7 @@ class ALM_Admin {
 				'expandShortenersAction' => self::AJAX_EXPAND_SHORTENER_ACTION,
 				'fetchThumbnailAction'   => self::AJAX_FETCH_THUMBNAIL_ACTION,
 				'linkHealthAction'       => self::AJAX_LINK_HEALTH_ACTION,
+				'removeLinkAction'       => self::AJAX_REMOVE_LINK_ACTION,
 				'nonce'                  => wp_create_nonce( self::NONCE_ACTION ),
 				'total'                  => $this->scanner->count_scannable_posts(),
 				'domainsTotal'           => $this->domain_scanner->count_domains_needing_check(),
@@ -209,6 +212,8 @@ class ALM_Admin {
 					'cancel'               => __( 'Cancel', 'affiliate-link-manager' ),
 					'matching'             => __( 'Checking…', 'affiliate-link-manager' ),
 					'deleteConfirm'        => __( "Delete this link? This only removes it from Affiliate Link Manager's records -- it does not change the post.", 'affiliate-link-manager' ),
+					'removeConfirm'        => __( 'Remove this link from the post? This edits the post content directly (the link text stays, just unlinked) and deletes it from Affiliate Link Manager\'s records -- it can\'t be undone from here.', 'affiliate-link-manager' ),
+					'bulkRemoveWarn'       => __( 'Remove all selected dead links from their posts? This edits post content directly and can\'t be undone from here. Anything not confirmed dead is skipped.', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
 					'forceConvertWarn'     => __( 'This link is currently tracked under %s. Saving will replace it -- are you sure?', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "ShopMy" */
@@ -418,6 +423,50 @@ class ALM_Admin {
 		}
 
 		$result = $this->converter->save_url( $item, $url );
+
+		if ( is_wp_error( $result ) ) {
+			wp_send_json_error( array( 'message' => $result->get_error_message() ) );
+		}
+
+		wp_send_json_success();
+	}
+
+	/**
+	 * Single-row "Remove from Post" for the Edit modal -- unwraps the
+	 * link out of the post entirely and deletes its tracking row, via
+	 * ALM_Link_Converter::remove(). Only ever actually acts on a
+	 * status=stale row; the modal itself already only shows this action
+	 * for a stale link (see assets/admin.js), but this is re-checked
+	 * server-side too rather than trusting the client alone.
+	 *
+	 * @return void
+	 */
+	public function handle_remove_link() {
+		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
+
+		if ( ! current_user_can( self::CAPABILITY ) ) {
+			wp_send_json_error( array( 'message' => __( 'You do not have permission to do this.', 'affiliate-link-manager' ) ), 403 );
+		}
+
+		$id = isset( $_POST['id'] ) ? absint( wp_unslash( $_POST['id'] ) ) : 0;
+		if ( ! $id ) {
+			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 400 );
+		}
+
+		global $wpdb;
+		$table = ALM_Install::table_name();
+		$sql   = "SELECT * FROM {$table} WHERE id = %d"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+		$item  = $wpdb->get_row( $wpdb->prepare( $sql, $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+
+		if ( ! $item ) {
+			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 404 );
+		}
+
+		if ( ALM_Install::STATUS_STALE !== $item['status'] ) {
+			wp_send_json_error( array( 'message' => __( 'Only a confirmed-dead link can be removed this way.', 'affiliate-link-manager' ) ), 400 );
+		}
+
+		$result = $this->converter->remove( $item );
 
 		if ( is_wp_error( $result ) ) {
 			wp_send_json_error( array( 'message' => $result->get_error_message() ) );

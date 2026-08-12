@@ -17,7 +17,9 @@
  * anymore. Edit Post/View are secondary links next to the post title;
  * Ignore/Delete are secondary actions in the footer, deliberately kept
  * apart from Cancel/Save (a different kind of action, not part of the
- * same URL-editing flow).
+ * same URL-editing flow). "Remove from Post" joins them there too --
+ * only shown for a confirmed-dead (status=stale) link, see
+ * ALM_Link_Converter::remove().
  *
  * The thumbnail slot (#alm-edit-link-thumb) is populated the same way
  * -- JS renders straight from the row's own data-thumbnail-url/
@@ -69,6 +71,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="alm-modal-actions">
 			<div class="alm-modal-actions-secondary">
 				<a href="#" id="alm-edit-link-ignore" class="alm-modal-text-action"><?php esc_html_e( 'Ignore', 'affiliate-link-manager' ); ?></a>
+				<a href="#" id="alm-edit-link-remove" class="alm-modal-text-action alm-modal-text-action-danger" hidden><?php esc_html_e( 'Remove from Post', 'affiliate-link-manager' ); ?></a>
 				<a href="#" id="alm-edit-link-delete" class="alm-modal-text-action alm-modal-text-action-danger"><?php esc_html_e( 'Delete', 'affiliate-link-manager' ); ?></a>
 			</div>
 			<div class="alm-modal-actions-primary">

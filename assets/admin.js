@@ -317,6 +317,7 @@
 		var thumbField = document.getElementById( 'alm-edit-link-thumb' );
 		var urlInput = document.getElementById( 'alm-edit-link-url-input' );
 		var ignoreLink = document.getElementById( 'alm-edit-link-ignore' );
+		var removeLink = document.getElementById( 'alm-edit-link-remove' );
 		var deleteLink = document.getElementById( 'alm-edit-link-delete' );
 		var resolvedRow = document.getElementById( 'alm-edit-link-resolved' );
 		var resolvedUrlField = document.getElementById( 'alm-edit-link-resolved-url' );
@@ -546,6 +547,13 @@
 			ignoreLink.hidden = 'ignored' === link.getAttribute( 'data-status' );
 			deleteLink.href = link.getAttribute( 'data-delete-url' );
 
+			// Remove from Post only makes sense for a confirmed-dead link
+			// -- see ALM_Link_Converter::remove(). AJAX-driven, not a
+			// plain nonce'd link like Ignore/Delete, since this can fail
+			// (the same content-changed-since-scan wall Save can hit) and
+			// needs to show that inline rather than just redirecting.
+			removeLink.hidden = 'stale' !== link.getAttribute( 'data-status' );
+
 			// Only present for a shortened link ALM_Shortener_Scanner has
 			// already resolved -- "Use this URL" fills the field with it
 			// directly rather than making an admin copy/paste it by hand.
@@ -639,6 +647,50 @@
 			}
 		} );
 
+		// Remove from Post: AJAX, not a plain link -- a real edit to
+		// post content can fail (the post changed since the last scan),
+		// and that needs to show inline the same way Save's own errors
+		// do, not just silently redirect.
+		removeLink.addEventListener( 'click', function ( event ) {
+			event.preventDefault();
+
+			if ( ! window.confirm( almAdmin.strings.removeConfirm ) ) {
+				return;
+			}
+
+			removeLink.setAttribute( 'aria-disabled', 'true' );
+			errorText.hidden = true;
+
+			var body = new FormData();
+			body.append( 'action', almAdmin.removeLinkAction );
+			body.append( 'nonce', almAdmin.nonce );
+			body.append( 'id', currentId );
+
+			fetch( almAdmin.ajaxUrl, {
+				method: 'POST',
+				credentials: 'same-origin',
+				body: body,
+			} )
+				.then( function ( response ) {
+					return response.json();
+				} )
+				.then( function ( json ) {
+					if ( ! json.success ) {
+						errorText.textContent = ( json.data && json.data.message ) ? json.data.message : almAdmin.strings.error;
+						errorText.hidden = false;
+						removeLink.removeAttribute( 'aria-disabled' );
+						return;
+					}
+
+					window.location.reload();
+				} )
+				.catch( function () {
+					errorText.textContent = almAdmin.strings.error;
+					errorText.hidden = false;
+					removeLink.removeAttribute( 'aria-disabled' );
+				} );
+		} );
+
 		useResolvedLink.addEventListener( 'click', function ( event ) {
 			event.preventDefault();
 			urlInput.value = resolvedUrlField.textContent;
@@ -707,11 +759,11 @@
 	}
 
 	/**
-	 * Bulk "Convert to [Provider]" confirm -- WP_List_Table renders two
-	 * independent action selects (top/bottom), only one of which is
-	 * actually "current" per request (whichever isn't "-1"; see WP
-	 * core's own current_action()), so both are checked the same way
-	 * server-side handling does.
+	 * Bulk "Convert to [Provider]"/"Remove from Post" confirms --
+	 * WP_List_Table renders two independent action selects (top/bottom),
+	 * only one of which is actually "current" per request (whichever
+	 * isn't "-1"; see WP core's own current_action()), so both are
+	 * checked the same way server-side handling does.
 	 */
 	var bulkForm = document.querySelector( '.alm-links-table' ) ? document.querySelector( '.alm-links-table' ).closest( 'form' ) : null;
 
@@ -720,6 +772,13 @@
 			var topAction = bulkForm.querySelector( 'select[name="action"]' );
 			var bottomAction = bulkForm.querySelector( 'select[name="action2"]' );
 			var action = ( topAction && '-1' !== topAction.value ) ? topAction.value : ( bottomAction ? bottomAction.value : '-1' );
+
+			if ( 'remove_dead_links' === action ) {
+				if ( ! window.confirm( almAdmin.strings.bulkRemoveWarn ) ) {
+					event.preventDefault();
+				}
+				return;
+			}
 
 			if ( 0 !== action.indexOf( 'convert_' ) ) {
 				return;

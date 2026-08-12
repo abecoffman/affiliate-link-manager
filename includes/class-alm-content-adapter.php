@@ -82,6 +82,22 @@ abstract class ALM_Content_Adapter {
 	abstract public function replace_link( $post_id, $location, $old_url, $new_url );
 
 	/**
+	 * Removes one link from the post entirely -- unwraps the `<a>` tag
+	 * but keeps its inner text/markup, so the sentence it lived in still
+	 * reads naturally with just the link gone. Same verify-then-refuse
+	 * contract as replace_link(): implementations must confirm $old_url
+	 * is still what's actually there and return WP_Error (leaving the
+	 * post untouched) if the content changed underneath since the last
+	 * scan.
+	 *
+	 * @param int    $post_id
+	 * @param string $location The opaque handle from get_links().
+	 * @param string $old_url  The href expected to currently be there.
+	 * @return true|WP_Error
+	 */
+	abstract public function remove_link( $post_id, $location, $old_url );
+
+	/**
 	 * A short "as it reads in the post" snippet around this link --
 	 * for a link editor UI to show what's actually being changed, not
 	 * just an isolated URL. Optional: not abstract on purpose, so any

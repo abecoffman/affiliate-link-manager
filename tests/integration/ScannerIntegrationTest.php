@@ -285,6 +285,43 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertStringNotContainsString( 'href="https://www.zara.com/product"', $fresh->post_content );
 	}
 
+	public function test_post_content_adapter_remove_link_unwraps_the_anchor_and_persists() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Wearing this <a href="https://www.a-dead-retailer.example/product">tank top</a> today.</p>',
+			)
+		);
+
+		$adapter = new ALM_Adapter_Post_Content();
+		$result  = $adapter->remove_link( $post_id, '0', 'https://www.a-dead-retailer.example/product' );
+
+		$this->assertTrue( $result );
+
+		clean_post_cache( $post_id );
+		$fresh = get_post( $post_id );
+		$this->assertStringNotContainsString( '<a ', $fresh->post_content );
+		$this->assertStringContainsString( 'Wearing this tank top today.', $fresh->post_content );
+	}
+
+	public function test_post_content_adapter_remove_link_refuses_when_content_changed_since_the_last_scan() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p><a href="https://www.a-dead-retailer.example/product">tank top</a></p>',
+			)
+		);
+
+		$adapter = new ALM_Adapter_Post_Content();
+		$result  = $adapter->remove_link( $post_id, '0', 'https://not-the-real-current-href.example/product' );
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+
+		clean_post_cache( $post_id );
+		$fresh = get_post( $post_id );
+		$this->assertStringContainsString( 'href="https://www.a-dead-retailer.example/product"', $fresh->post_content, 'The real, current post content must be untouched.' );
+	}
+
 	public function test_post_content_adapter_get_context_reads_the_real_post() {
 		$post_id = self::factory()->post->create(
 			array(
@@ -381,6 +418,43 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		// post_content must have been resynced via FLBuilder::render_editor_content()
 		// -- confirmed via the stub's fixed marker, proving the adapter
 		// actually called it rather than leaving post_content stale.
+		clean_post_cache( $post_id );
+		$fresh = get_post( $post_id );
+		$this->assertSame( '<!-- bb-plugin-stub rendered content -->', $fresh->post_content );
+	}
+
+	public function test_beaver_builder_adapter_remove_link_unwraps_and_resyncs_post_content() {
+		if ( ! class_exists( 'FLBuilderModel' ) ) {
+			$this->markTestSkipped( 'bb-plugin-stub not loaded -- set BB_PLUGIN_STUB_PATH before running.' );
+		}
+
+		$post_id = self::factory()->post->create( array( 'post_status' => 'publish' ) );
+		update_post_meta( $post_id, '_fl_builder_enabled', 1 );
+		update_post_meta(
+			$post_id,
+			'_fl_builder_data',
+			array(
+				'node-1' => (object) array(
+					'type'     => 'module',
+					'settings' => (object) array(
+						'type' => 'rich-text',
+						'text' => '<p>Get the <a href="https://www.a-dead-retailer.example/product">boots</a> now.</p>',
+					),
+				),
+			)
+		);
+
+		$adapter = new ALM_Adapter_Beaver_Builder();
+		$result  = $adapter->remove_link( $post_id, 'node-1:0', 'https://www.a-dead-retailer.example/product' );
+
+		$this->assertTrue( $result );
+
+		$data = get_post_meta( $post_id, '_fl_builder_data', true );
+		$this->assertStringNotContainsString( '<a ', $data['node-1']->settings->text );
+		$this->assertStringContainsString( 'Get the boots now.', $data['node-1']->settings->text );
+
+		// Same post_content resync as replace_link() -- confirmed via
+		// the stub's fixed marker.
 		clean_post_cache( $post_id );
 		$fresh = get_post( $post_id );
 		$this->assertSame( '<!-- bb-plugin-stub rendered content -->', $fresh->post_content );

@@ -26,7 +26,22 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
 
 class ALM_Links_List_Table extends WP_List_Table {
 
-	const BULK_NONCE_ACTION     = 'alm-bulk-links';
+	// Deliberately the exact string WP_List_Table::display_tablenav()
+	// already renders on its own ('bulk-' . $this->_args['plural'],
+	// see the 'plural' => 'alm_links' constructor arg below) -- not an
+	// arbitrary choice. A second, differently-named nonce field used to
+	// be rendered explicitly in includes/views/links.php on top of that
+	// one; both share the HTML name="_wpnonce", so a real form
+	// submission sent both values and whichever landed last in the
+	// query string silently won, failing check_admin_referer() here
+	// against the *other* one -- a real 403 on every bulk action, found
+	// live via an actual browser submission (Playwright), not caught by
+	// any integration test (those call process_bulk_action() directly,
+	// never rendering + submitting the real form). Matching this
+	// constant to WP core's own auto-rendered nonce and deleting the
+	// redundant explicit field is the fix -- exactly one nonce field,
+	// exactly one action string, everywhere.
+	const BULK_NONCE_ACTION     = 'bulk-alm_links';
 	const CONVERT_ACTION_PREFIX = 'convert_';
 
 	/**
@@ -148,7 +163,11 @@ class ALM_Links_List_Table extends WP_List_Table {
 		}
 
 		$actions['ignore'] = __( 'Ignore', 'affiliate-link-manager' );
-		$actions['delete'] = __( 'Delete', 'affiliate-link-manager' );
+		// Only ever actually removes status=stale rows -- see
+		// bulk_remove(); listed unconditionally here the same way
+		// Ignore/Delete are, not gated per-tab.
+		$actions['remove_dead_links'] = __( 'Remove from Post', 'affiliate-link-manager' );
+		$actions['delete']            = __( 'Delete', 'affiliate-link-manager' );
 
 		return $actions;
 	}
@@ -489,6 +508,8 @@ class ALM_Links_List_Table extends WP_List_Table {
 		} elseif ( 0 === strpos( $action, self::CONVERT_ACTION_PREFIX ) ) {
 			$provider_id = substr( $action, strlen( self::CONVERT_ACTION_PREFIX ) );
 			$notice_args = $this->bulk_convert( $ids, $provider_id );
+		} elseif ( 'remove_dead_links' === $action ) {
+			$notice_args = $this->bulk_remove( $ids );
 		} else {
 			return;
 		}
@@ -542,6 +563,49 @@ class ALM_Links_List_Table extends WP_List_Table {
 		return array(
 			'alm_converted' => $converted,
 			'alm_skipped'   => $skipped,
+		);
+	}
+
+	/**
+	 * Unwraps each selected row's link out of its post entirely, via the
+	 * shared ALM_Link_Converter -- one row at a time, same reasoning as
+	 * bulk_convert() (a real content write, not a batched query). Only
+	 * ever actually processes status=stale rows: selecting a mix and
+	 * running this doesn't silently strip a link that isn't confirmed
+	 * dead. Anything skipped (wrong status, or a content-changed-since-scan
+	 * WP_Error) is counted and surfaced in the redirect notice, same
+	 * "leave it alone and say why" convention as bulk_convert().
+	 *
+	 * @param int[] $ids
+	 * @return array<string,int> Query args for the post-redirect notice.
+	 */
+	private function bulk_remove( array $ids ) {
+		global $wpdb;
+		$table        = ALM_Install::table_name();
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+		$sql   = "SELECT * FROM {$table} WHERE id IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed run of %d tokens, not user input; real values bound via prepare() below.
+		$items = $wpdb->get_results( $wpdb->prepare( $sql, $ids ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+
+		$removed = 0;
+		$skipped = 0;
+		foreach ( $items as $item ) {
+			if ( ALM_Install::STATUS_STALE !== $item['status'] ) {
+				++$skipped;
+				continue;
+			}
+
+			$result = $this->converter->remove( $item );
+			if ( is_wp_error( $result ) ) {
+				++$skipped;
+			} else {
+				++$removed;
+			}
+		}
+
+		return array(
+			'alm_removed'        => $removed,
+			'alm_remove_skipped' => $skipped,
 		);
 	}
 

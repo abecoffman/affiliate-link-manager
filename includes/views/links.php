@@ -76,6 +76,39 @@ if ( ! defined( 'ABSPATH' ) ) {
 		</div>
 	<?php endif; ?>
 
+	<?php
+	// Result notice from the "Remove from Post" bulk action -- same
+	// pattern as the "Convert to [Provider]" notice above.
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only notice display, the state change already happened and was itself nonce-verified in process_bulk_action().
+	if ( isset( $_GET['alm_removed'] ) ) :
+		$removed        = absint( wp_unslash( $_GET['alm_removed'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$remove_skipped = isset( $_GET['alm_remove_skipped'] ) ? absint( wp_unslash( $_GET['alm_remove_skipped'] ) ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		?>
+		<div class="notice notice-<?php echo esc_attr( $remove_skipped ? 'warning' : 'success' ); ?> is-dismissible">
+			<p>
+				<?php if ( $remove_skipped ) : ?>
+					<?php
+					printf(
+						/* translators: 1: number removed, 2: number of selected links, 3: number skipped */
+						esc_html__( 'Removed %1$d of %2$d; %3$d skipped because they weren\'t confirmed dead, or the post content changed since the last scan — rescan and try again.', 'affiliate-link-manager' ),
+						(int) $removed,
+						(int) ( $removed + $remove_skipped ),
+						(int) $remove_skipped
+					);
+					?>
+				<?php else : ?>
+					<?php
+					printf(
+						/* translators: %d: number of links removed */
+						esc_html( _n( 'Removed %d link from its post.', 'Removed %d links from their posts.', $removed, 'affiliate-link-manager' ) ),
+						(int) $removed
+					);
+					?>
+				<?php endif; ?>
+			</p>
+		</div>
+	<?php endif; ?>
+
 	<?php $list_table->views(); ?>
 
 	<form method="get">
@@ -85,7 +118,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<?php endif; ?>
 		<?php
 		$list_table->search_box( __( 'Search links', 'affiliate-link-manager' ), 'alm-link-search' );
-		wp_nonce_field( ALM_Links_List_Table::BULK_NONCE_ACTION );
+		// No explicit wp_nonce_field() here -- $list_table->display()
+		// already renders one on its own (WP_List_Table::display_tablenav()),
+		// using exactly ALM_Links_List_Table::BULK_NONCE_ACTION's value
+		// by design. See that constant's own docblock for why a second,
+		// explicit field here was a real bug, not redundant safety.
 		?>
 		<div class="alm-table-scroll">
 			<?php $list_table->display(); ?>

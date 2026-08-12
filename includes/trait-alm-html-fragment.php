@@ -71,6 +71,52 @@ trait ALM_Html_Fragment_Trait {
 	}
 
 	/**
+	 * Unwraps one anchor -- removes the `<a>` tag itself but keeps
+	 * whatever's inside it exactly as it was (plain text, or nested
+	 * inline markup like `<strong>`), so the sentence it lived in still
+	 * reads naturally with just the link gone. Direct sibling of
+	 * replace_anchor_href(): identical index-bounds/old-URL-match
+	 * verification, only the mutation itself differs (unwrap instead of
+	 * swapping the href).
+	 *
+	 * @param string $html
+	 * @param int    $index
+	 * @param string $old_url
+	 * @return string|WP_Error Updated HTML fragment, or WP_Error if the
+	 *                         anchor at $index no longer has $old_url.
+	 */
+	private function unwrap_anchor( $html, $index, $old_url ) {
+		$doc     = $this->load_html_fragment( $html );
+		$anchors = $this->get_fragment_anchors( $doc );
+
+		if ( $index < 0 || $index >= $anchors->length ) {
+			return new WP_Error(
+				'alm_link_not_found',
+				__( 'That link no longer exists at the expected location -- the post may have been edited since the last scan. Re-scan and try again.', 'affiliate-link-manager' )
+			);
+		}
+
+		$anchor = $anchors->item( $index );
+		if ( $anchor->getAttribute( 'href' ) !== $old_url ) {
+			return new WP_Error(
+				'alm_link_changed',
+				__( 'That link has changed since the last scan. Re-scan and try again.', 'affiliate-link-manager' )
+			);
+		}
+
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase -- DOMNode's own built-in PHP property, not a WordPress API.
+		$parent = $anchor->parentNode;
+		// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+		while ( $anchor->firstChild ) {
+			// phpcs:ignore WordPress.NamingConventions.ValidVariableName.UsedPropertyNotSnakeCase
+			$parent->insertBefore( $anchor->firstChild, $anchor );
+		}
+		$parent->removeChild( $anchor );
+
+		return $this->save_html_fragment( $doc );
+	}
+
+	/**
 	 * A short "as it reads in the post" snippet around one anchor -- the
 	 * one sentence it lives in, real markup and all (other links, bold,
 	 * italic), for a link editor UI to show what's actually being
