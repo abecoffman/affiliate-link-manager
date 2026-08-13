@@ -141,27 +141,46 @@ if ( ! defined( 'ABSPATH' ) ) {
 		// with a checkbox actually on screen can be selected this way.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab selection, not a state-changing action.
 		if ( isset( $_GET['status'] ) && 'dead' === $_GET['status'] && ! empty( $list_table->items ) ) :
+			$dead_shown = count( $list_table->items );
+			// The tab label right above (get_views()) shows the real
+			// site-wide total -- reported live as confusing when this
+			// banner's own count (page-scoped, see the comment above)
+			// didn't match it with nothing explaining why. Pulling the
+			// same total this table's own query already computed
+			// (WP_List_Table::set_pagination_args(), called from
+			// prepare_items()) rather than re-querying it, and saying
+			// "on this page" explicitly whenever there's more than one.
+			$dead_total = (int) $list_table->get_pagination_arg( 'total_items' );
 			?>
 			<p class="alm-dead-links-banner">
 				<?php
-				printf(
-					/* translators: %s: link text describing how many links are shown */
-					esc_html__( 'These %s are confirmed dead -- their destination no longer works.', 'affiliate-link-manager' ),
-					esc_html(
-						sprintf(
-							/* translators: %d: number of dead links shown on this page */
-							_n( '%d link', '%d links', count( $list_table->items ), 'affiliate-link-manager' ),
-							count( $list_table->items )
+				if ( $dead_total > $dead_shown ) {
+					printf(
+						/* translators: 1: number of dead links shown on this page, 2: total confirmed-dead links across all pages */
+						esc_html__( 'Showing %1$d of %2$d confirmed-dead links on this page -- their destination no longer works.', 'affiliate-link-manager' ),
+						(int) $dead_shown,
+						(int) $dead_total
+					);
+				} else {
+					printf(
+						/* translators: %s: link text describing how many links are shown */
+						esc_html__( 'These %s are confirmed dead -- their destination no longer works.', 'affiliate-link-manager' ),
+						esc_html(
+							sprintf(
+								/* translators: %d: number of dead links shown on this page */
+								_n( '%d link', '%d links', $dead_shown, 'affiliate-link-manager' ),
+								(int) $dead_shown
+							)
 						)
-					)
-				);
+					);
+				}
 				?>
 				<button type="submit" id="alm-remove-all-dead" class="button button-primary">
 					<?php
 					printf(
 						/* translators: %d: number of dead links on this page */
 						esc_html__( 'Remove These %d From Their Posts', 'affiliate-link-manager' ),
-						count( $list_table->items )
+						(int) $dead_shown
 					);
 					?>
 				</button>
