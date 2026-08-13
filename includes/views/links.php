@@ -109,50 +109,44 @@ if ( ! defined( 'ABSPATH' ) ) {
 		</div>
 	<?php endif; ?>
 
-	<?php $list_table->views(); ?>
-
-	<form method="get">
-		<input type="hidden" name="page" value="<?php echo esc_attr( ALM_Admin::MENU_SLUG . '-links' ); ?>" />
-		<?php if ( $filtered_post_id ) : ?>
-			<input type="hidden" name="post_id" value="<?php echo esc_attr( $filtered_post_id ); ?>" />
-		<?php endif; ?>
-		<?php
-		$list_table->search_box( __( 'Search links', 'affiliate-link-manager' ), 'alm-link-search' );
-		// No explicit wp_nonce_field() here -- $list_table->display()
-		// already renders one on its own (WP_List_Table::display_tablenav()),
-		// using exactly ALM_Links_List_Table::BULK_NONCE_ACTION's value
-		// by design. See that constant's own docblock for why a second,
-		// explicit field here was a real bug, not redundant safety.
+	<?php
+	// The actual point of the round that introduced this: the "Remove
+	// from Post" bulk action already existed, but buried in a generic
+	// dropdown + the Edit modal's footer -- effectively invisible ("I
+	// don't actually see that utility itself"). This surfaces it
+	// directly in front of an admin already looking at exactly the
+	// links it applies to. Every row on this tab is already confirmed
+	// dead (see ALM_Links_List_Table::prepare_items()'s ?status=dead
+	// handling), so the button reuses the exact same, already-tested
+	// remove_dead_links bulk action -- just pre-selecting every row on
+	// the current page rather than requiring the admin to already know
+	// the dropdown entry exists. Scoped to "this page" deliberately,
+	// not a claimed site-wide total: only rows with a checkbox actually
+	// on screen can be selected this way.
+	//
+	// A real WP admin notice (.notice.notice-warning), not a custom-
+	// styled callout -- reported live as "ugly, in a strange place,
+	// doesn't follow WordPress conventions" when it was a solid-fill
+	// banner wedged between the search box and the tablenav. Grouped
+	// here with this screen's other real notices (right after $h1,
+	// before the view tabs -- WP core's own convention, e.g. Posts'
+	// "N posts updated"), and gets its styling entirely free from
+	// wp-admin's own global CSS, same as the alm_converted/alm_removed
+	// notices just above -- no custom CSS needed for the box itself.
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab selection, not a state-changing action.
+	if ( isset( $_GET['status'] ) && 'dead' === $_GET['status'] && ! empty( $list_table->items ) ) :
+		$dead_shown = count( $list_table->items );
+		// The tab label below (get_views()) shows the real site-wide
+		// total -- reported live as confusing when this notice's own
+		// count (page-scoped, see above) didn't match it with nothing
+		// explaining why. Pulling the same total this table's own query
+		// already computed (WP_List_Table::set_pagination_args(),
+		// called from prepare_items()) rather than re-querying it, and
+		// saying "on this page" explicitly whenever there's more than one.
+		$dead_total = (int) $list_table->get_pagination_arg( 'total_items' );
 		?>
-
-		<?php
-		// The actual point of this round: the "Remove from Post" bulk
-		// action already existed, but buried in a generic dropdown +
-		// the Edit modal's footer -- effectively invisible ("I don't
-		// actually see that utility itself"). This puts it directly in
-		// front of an admin already looking at exactly the links it
-		// applies to. Every row on this tab is already confirmed dead
-		// (see ALM_Links_List_Table::prepare_items()'s ?status=dead
-		// handling), so this button reuses the exact same, already-
-		// tested remove_dead_links bulk action -- just pre-selecting
-		// every row on the current page rather than requiring the admin
-		// to already know the dropdown entry exists. Scoped to "this
-		// page" deliberately, not a claimed site-wide total: only rows
-		// with a checkbox actually on screen can be selected this way.
-		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only tab selection, not a state-changing action.
-		if ( isset( $_GET['status'] ) && 'dead' === $_GET['status'] && ! empty( $list_table->items ) ) :
-			$dead_shown = count( $list_table->items );
-			// The tab label right above (get_views()) shows the real
-			// site-wide total -- reported live as confusing when this
-			// banner's own count (page-scoped, see the comment above)
-			// didn't match it with nothing explaining why. Pulling the
-			// same total this table's own query already computed
-			// (WP_List_Table::set_pagination_args(), called from
-			// prepare_items()) rather than re-querying it, and saying
-			// "on this page" explicitly whenever there's more than one.
-			$dead_total = (int) $list_table->get_pagination_arg( 'total_items' );
-			?>
-			<p class="alm-dead-links-banner">
+		<div class="notice notice-warning">
+			<p>
 				<?php
 				if ( $dead_total > $dead_shown ) {
 					printf(
@@ -175,7 +169,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 					);
 				}
 				?>
-				<button type="submit" id="alm-remove-all-dead" class="button button-primary">
+			</p>
+			<p>
+				<button type="submit" form="alm-links-form" id="alm-remove-all-dead" class="button button-primary">
 					<?php
 					printf(
 						/* translators: %d: number of dead links on this page */
@@ -185,7 +181,24 @@ if ( ! defined( 'ABSPATH' ) ) {
 					?>
 				</button>
 			</p>
+		</div>
+	<?php endif; ?>
+
+	<?php $list_table->views(); ?>
+
+	<form method="get" id="alm-links-form">
+		<input type="hidden" name="page" value="<?php echo esc_attr( ALM_Admin::MENU_SLUG . '-links' ); ?>" />
+		<?php if ( $filtered_post_id ) : ?>
+			<input type="hidden" name="post_id" value="<?php echo esc_attr( $filtered_post_id ); ?>" />
 		<?php endif; ?>
+		<?php
+		$list_table->search_box( __( 'Search links', 'affiliate-link-manager' ), 'alm-link-search' );
+		// No explicit wp_nonce_field() here -- $list_table->display()
+		// already renders one on its own (WP_List_Table::display_tablenav()),
+		// using exactly ALM_Links_List_Table::BULK_NONCE_ACTION's value
+		// by design. See that constant's own docblock for why a second,
+		// explicit field here was a real bug, not redundant safety.
+		?>
 
 		<div class="alm-table-scroll">
 			<?php $list_table->display(); ?>
