@@ -838,33 +838,4 @@
 		} );
 	}
 
-	/**
-	 * The Dead-tab notice's own button (includes/views/links.php) --
-	 * every row on this tab is already confirmed dead, so this just
-	 * pre-selects all of them and sets the bulk action, then lets the
-	 * form's normal submit event fire: the confirm handler right above
-	 * already covers remove_dead_links, no separate confirm needed here.
-	 *
-	 * The button itself now lives outside <form id="alm-links-form">
-	 * (grouped with this screen's other admin notices, which all sit
-	 * above the view tabs/form -- see that file's own comment for why),
-	 * linked to it via the standard HTML `form` attribute rather than
-	 * DOM nesting -- bulkForm below still resolves via the *table's*
-	 * own ancestry, so this all keeps working unchanged either way.
-	 */
-	var removeAllDeadButton = document.getElementById( 'alm-remove-all-dead' );
-
-	if ( removeAllDeadButton && bulkForm ) {
-		removeAllDeadButton.addEventListener( 'click', function () {
-			var checkboxes = bulkForm.querySelectorAll( 'input[name="alm_link[]"]' );
-			checkboxes.forEach( function ( checkbox ) {
-				checkbox.checked = true;
-			} );
-
-			var topAction = bulkForm.querySelector( 'select[name="action"]' );
-			if ( topAction ) {
-				topAction.value = 'remove_dead_links';
-			}
-		} );
-	}
 } )();
