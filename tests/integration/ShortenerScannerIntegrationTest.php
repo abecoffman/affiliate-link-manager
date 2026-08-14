@@ -252,7 +252,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 	 * Feeds the Dashboard Tasks table's "Last run" line for Expand
 	 * Shortened Links -- same role
 	 * ALM_Domain_Scanner::record_check_delta() plays for Check Domains
-	 * (see ALM_Admin::get_dashboard_tasks()).
+	 * (see ALM_Dashboard_Data::get_dashboard_tasks()).
 	 */
 	public function test_first_of_run_records_a_delta_of_what_this_run_actually_found() {
 		$this->insert_link( 'http://bit.ly/tracked' );

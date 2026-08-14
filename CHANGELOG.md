@@ -4,9 +4,9 @@ All notable changes to this project are documented here. Reconstructed
 from git history up through 1.20.0; entries from that point on are
 written as the change ships.
 
-## [Unreleased]
+## [1.21.0] - 2026-08-14
 
-Addressing findings from a TL-style code review of the whole plugin:
+Addressed findings from a TL-style code review of the whole plugin:
 
 - Hardened `ALM_Domain_Checker`, `ALM_Link_Health_Checker`, and
   `ALM_Thumbnail_Fetcher` against SSRF by switching them to
@@ -23,6 +23,21 @@ Addressing findings from a TL-style code review of the whole plugin:
   marked the unused `last_verified` schema column as vestigial.
 - Extended phpcs coverage to test files (previously excluded wholesale).
 - Added `README.md` and this changelog.
+- Wired the 100+ test integration suite into CI (previously only phpcs
+  and the fast unit tier ran there). Caught a real PHP <8.1
+  compatibility bug on its very first run -- a `ReflectionMethod::
+  setAccessible()` call an earlier round removed because it was
+  unnecessary (and, as of PHP 8.5, a hard-failing deprecation) on the
+  PHP 8.5 used for local testing, which had silently broken that test
+  on every PHP version below 8.1, including this plugin's own
+  supported floor.
+- Extracted `ALM_Dashboard_Data` out of `ALM_Admin` (the provider/status
+  summary counts and Tasks-table formatting -- pure data aggregation
+  with no hooks or AJAX wiring of its own) and added integration test
+  coverage for it, plus the previously-untested `handle_edit_link`,
+  `handle_fetch_thumbnail`, `handle_match_provider`, and
+  `handle_settings_forms`/`save_settings` AJAX handlers, and light
+  smoke coverage for the three screen-render methods.
 
 ## [1.20.0] - 2026-08-13
 

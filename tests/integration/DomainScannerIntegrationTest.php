@@ -219,7 +219,7 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	 * Feeds the Dashboard Tasks table's "Last run" line for Check
 	 * Domains -- same role ALM_Scanner::record_scan_delta() plays for
 	 * Run Scan, added so that row could finally say what it found last
-	 * time instead of nothing (see ALM_Admin::get_dashboard_tasks()).
+	 * time instead of nothing (see ALM_Dashboard_Data::get_dashboard_tasks()).
 	 */
 	public function test_first_of_run_records_a_delta_of_what_this_run_actually_found() {
 		$this->insert_link( 'https://realshop.example/product', ALM_Install::STATUS_CONVERTIBLE );

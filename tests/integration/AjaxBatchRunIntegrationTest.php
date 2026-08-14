@@ -44,8 +44,9 @@ class AjaxBatchRunIntegrationTest extends WP_Ajax_UnitTestCase {
 		$shortener_scanner      = new ALM_Shortener_Scanner( new ALM_Shortener_Resolver(), $providers );
 		$thumbnail_fetcher      = new ALM_Thumbnail_Fetcher();
 		$link_health_scanner    = new ALM_Link_Health_Scanner( new NoSleepLinkHealthChecker() );
+		$dashboard_data         = new ALM_Dashboard_Data( $providers, $domain_scanner, $shortener_scanner, $link_health_scanner );
 
-		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter, $network_signal_scanner, $shortener_scanner, $thumbnail_fetcher, $link_health_scanner );
+		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter, $network_signal_scanner, $shortener_scanner, $thumbnail_fetcher, $link_health_scanner, $dashboard_data );
 		$admin->init();
 
 		$user_id = self::factory()->user->create( array( 'role' => 'administrator' ) );

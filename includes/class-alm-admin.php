@@ -5,6 +5,12 @@
  * Providers screen, see register_menu()), and handles the AJAX
  * scan-batch endpoint plus the plain POST-and-redirect settings form.
  *
+ * Dashboard data aggregation (provider/status counts, the Tasks table's
+ * formatting) lives in ALM_Dashboard_Data instead -- a natural, low-
+ * risk seam to split off once this class had also grown to own nine
+ * AJAX handlers and settings persistence; see that class's own
+ * docblock.
+ *
  * @package ALM
  */
 
@@ -73,7 +79,12 @@ class ALM_Admin {
 	 */
 	private $link_health_scanner;
 
-	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner, ALM_Shortener_Scanner $shortener_scanner, ALM_Thumbnail_Fetcher $thumbnail_fetcher, ALM_Link_Health_Scanner $link_health_scanner ) {
+	/**
+	 * @var ALM_Dashboard_Data
+	 */
+	private $dashboard_data;
+
+	public function __construct( ALM_Scanner $scanner, ALM_Provider_Registry $providers, ALM_Adapter_Registry $adapters, ALM_Domain_Scanner $domain_scanner, ALM_Link_Converter $converter, ALM_Network_Signal_Scanner $network_signal_scanner, ALM_Shortener_Scanner $shortener_scanner, ALM_Thumbnail_Fetcher $thumbnail_fetcher, ALM_Link_Health_Scanner $link_health_scanner, ALM_Dashboard_Data $dashboard_data ) {
 		$this->scanner                = $scanner;
 		$this->providers              = $providers;
 		$this->adapters               = $adapters;
@@ -83,6 +94,7 @@ class ALM_Admin {
 		$this->shortener_scanner      = $shortener_scanner;
 		$this->thumbnail_fetcher      = $thumbnail_fetcher;
 		$this->link_health_scanner    = $link_health_scanner;
+		$this->dashboard_data         = $dashboard_data;
 	}
 
 	public function init() {
@@ -640,6 +652,23 @@ class ALM_Admin {
 			return;
 		}
 
+		$this->persist_settings_from_request();
+
+		wp_safe_redirect( add_query_arg( 'updated', '1', wp_get_referer() ) );
+		exit;
+	}
+
+	/**
+	 * The actual option-writing side of save_settings(), split out so
+	 * it's directly testable -- same reasoning as
+	 * ALM_Links_List_Table::bulk_remove(): the wp_safe_redirect()+exit()
+	 * that always follows a real request's successful save has nothing
+	 * to do with which options get written, and can't run inside a CLI
+	 * PHPUnit process.
+	 *
+	 * @return void
+	 */
+	private function persist_settings_from_request() {
 		// The nonce was already verified in handle_settings_forms() before this method is called.
 		if ( isset( $_POST['alm_shopmy_affiliate_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
 			update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, sanitize_text_field( wp_unslash( $_POST['alm_shopmy_affiliate_id'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
@@ -657,14 +686,11 @@ class ALM_Admin {
 		if ( isset( $_POST['alm_candidate_excluded_domains'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
 			update_option( 'alm_candidate_excluded_domains', sanitize_textarea_field( wp_unslash( $_POST['alm_candidate_excluded_domains'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
 		}
-
-		wp_safe_redirect( add_query_arg( 'updated', '1', wp_get_referer() ) );
-		exit;
 	}
 
 	public function render_dashboard() {
-		$stats          = $this->get_provider_stats();
-		$status_summary = $this->get_status_summary();
+		$stats          = $this->dashboard_data->get_provider_stats();
+		$status_summary = $this->dashboard_data->get_status_summary();
 		// The old "Stale" tile counted every status=stale row, dead-
 		// confirmed or not -- the not-yet-cleaned-up not-rediscovered
 		// slice is pure background housekeeping now (see
@@ -673,7 +699,7 @@ class ALM_Admin {
 		// shows the real, actionable count.
 		$dead_count      = ALM_Install::count_confirmed_dead();
 		$network_signals = $this->network_signal_scanner->scan();
-		$tasks           = $this->get_dashboard_tasks();
+		$tasks           = $this->dashboard_data->get_dashboard_tasks();
 		require ALM_PATH . 'includes/views/dashboard.php';
 	}
 
@@ -695,270 +721,5 @@ class ALM_Admin {
 			}
 		);
 		require ALM_PATH . 'includes/views/settings.php';
-	}
-
-	/**
-	 * The real-network sub-breakdown shown under the "Affiliate Links"
-	 * headline on the Dashboard (ShopMy X, RewardStyle Y) -- excludes
-	 * the 'unclassified' provider bucket on purpose. That bucket mixes
-	 * Candidate Affiliate Links and Other Outbound Links together and
-	 * belongs to the three-tier status summary (get_status_summary()),
-	 * not a per-network breakdown; a real provider only ever produces
-	 * status=active links (see ALM_Scanner::upsert_link()), so this
-	 * list is naturally just ShopMy/RewardStyle/etc., never noise.
-	 *
-	 * @return array<string,array{label:string,count:int}>
-	 */
-	private function get_provider_stats() {
-		global $wpdb;
-		$table = ALM_Install::table_name();
-
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$rows = $wpdb->get_results( "SELECT provider, COUNT(*) as total FROM {$table} WHERE provider != 'unclassified' GROUP BY provider", ARRAY_A );
-
-		$stats = array();
-		foreach ( (array) $rows as $row ) {
-			$provider = $this->providers->get_provider( $row['provider'] );
-			$label    = $provider ? $provider->get_label() : $row['provider'];
-
-			$stats[ $row['provider'] ] = array(
-				'label' => $label,
-				'count' => (int) $row['total'],
-			);
-		}
-
-		return $stats;
-	}
-
-	/**
-	 * The three-tier headline counts the Dashboard Overview is built
-	 * around: Affiliate Links (status=active), Candidate Affiliate
-	 * Links (status=convertible), and Other Outbound Links
-	 * (status=unclassified) -- the last of which is deliberately never
-	 * shown anywhere else as more than this one summary number.
-	 *
-	 * @return array<string,int>
-	 */
-	private function get_status_summary() {
-		global $wpdb;
-		$table = ALM_Install::table_name();
-
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$rows      = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
-		$by_status = wp_list_pluck( $rows, 'total', 'status' );
-
-		return array(
-			ALM_Install::STATUS_ACTIVE       => isset( $by_status[ ALM_Install::STATUS_ACTIVE ] ) ? (int) $by_status[ ALM_Install::STATUS_ACTIVE ] : 0,
-			ALM_Install::STATUS_CONVERTIBLE  => isset( $by_status[ ALM_Install::STATUS_CONVERTIBLE ] ) ? (int) $by_status[ ALM_Install::STATUS_CONVERTIBLE ] : 0,
-			ALM_Install::STATUS_UNCLASSIFIED => isset( $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] ) ? (int) $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] : 0,
-		);
-	}
-
-	/**
-	 * The Dashboard's Tasks table: one row per background operation, all
-	 * shaped identically (label, why it matters, what happened last
-	 * time, how much is left, one button) instead of three differently-
-	 * shaped cards -- see includes/views/dashboard.php. Formatting lives
-	 * here, once, rather than duplicated per task in the template.
-	 *
-	 * @return array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool,running:bool,processed_so_far:int,stalled:bool}>
-	 */
-	private function get_dashboard_tasks() {
-		$tasks = array(
-			array(
-				'id'           => 'scan',
-				'label'        => __( 'Scan', 'affiliate-link-manager' ),
-				'description'  => __( 'Finds links in your published posts and classifies each one as an affiliate link, a candidate, or noise.', 'affiliate-link-manager' ),
-				'last_run'     => $this->format_last_run(
-					get_option( 'alm_last_scan_time', '' ),
-					$this->format_scan_delta( get_option( 'alm_last_scan_delta', array() ) )
-				),
-				// No queue concept -- a scan always re-covers every
-				// scannable post, unlike the two resumable queues below.
-				'pending'      => null,
-				'button_id'    => 'alm-run-scan',
-				'progress_id'  => 'alm-scan-progress',
-				'button_label' => __( 'Run Scan', 'affiliate-link-manager' ),
-				'primary'      => true,
-			),
-			array(
-				'id'           => 'domains',
-				'label'        => __( 'Check Domains', 'affiliate-link-manager' ),
-				'description'  => __( 'Confirms candidate domains are real shops, not reference or magazine sites, so those don\'t get counted as opportunities.', 'affiliate-link-manager' ),
-				'last_run'     => $this->format_last_run(
-					get_option( 'alm_last_domain_check_time', '' ),
-					$this->format_domain_check_delta( get_option( 'alm_last_domain_check_delta', array() ) )
-				),
-				'pending'      => $this->domain_scanner->count_domains_needing_check(),
-				'button_id'    => 'alm-check-domains',
-				'progress_id'  => 'alm-domain-check-progress',
-				'button_label' => __( 'Check Domains', 'affiliate-link-manager' ),
-				'primary'      => false,
-			),
-			array(
-				'id'           => 'shorteners',
-				'label'        => __( 'Expand Shortened Links', 'affiliate-link-manager' ),
-				'description'  => __( 'Follows bit.ly, etsy.me, and other shortened links to their real destination, so those get tracked (or flagged dead) instead of sitting unclassified.', 'affiliate-link-manager' ),
-				'last_run'     => $this->format_last_run(
-					get_option( 'alm_last_shortener_expand_time', '' ),
-					$this->format_shortener_delta( get_option( 'alm_last_shortener_expand_delta', array() ) )
-				),
-				'pending'      => $this->shortener_scanner->count_pending(),
-				'button_id'    => 'alm-expand-shorteners',
-				'progress_id'  => 'alm-expand-shorteners-progress',
-				'button_label' => __( 'Expand Shortened Links', 'affiliate-link-manager' ),
-				'primary'      => false,
-			),
-			array(
-				'id'           => 'link_health',
-				'label'        => __( 'Check Link Health', 'affiliate-link-manager' ),
-				'description'  => __( 'Confirms each candidate link\'s destination still actually works -- dead domains and missing pages move out of your opportunities list instead of sitting there unusable.', 'affiliate-link-manager' ),
-				'last_run'     => $this->format_last_run(
-					get_option( 'alm_last_link_health_time', '' ),
-					$this->format_link_health_delta( get_option( 'alm_last_link_health_delta', array() ) )
-				),
-				'pending'      => $this->link_health_scanner->count_pending(),
-				'button_id'    => 'alm-check-link-health',
-				'progress_id'  => 'alm-link-health-progress',
-				'button_label' => __( 'Check Link Health', 'affiliate-link-manager' ),
-				'primary'      => false,
-			),
-		);
-
-		// Real in-progress state, not just the always-idle "click to
-		// start" shape above -- read once per task here (not inline
-		// per-array-literal above) so a run started from an earlier
-		// click, and possibly still being carried forward right now by
-		// alm_continue_batch_run() with the tab long closed, renders
-		// accurately on a fresh page load instead of looking abandoned.
-		// See ALM_Background_Runner.
-		foreach ( $tasks as &$task ) {
-			$state                    = ALM_Background_Runner::get_state( $task['id'] );
-			$task['running']          = $state['active'] && ! $state['stalled'];
-			$task['processed_so_far'] = $state['processed'];
-			$task['stalled']          = $state['stalled'];
-		}
-		unset( $task );
-
-		return $tasks;
-	}
-
-	/**
-	 * Single source of truth for "Last run" phrasing across every Tasks
-	 * row -- relative time (human_time_diff(), the same idiom wp-admin
-	 * itself uses for "X ago") plus whatever that task's own delta
-	 * formatter has to say, so all three rows read in the same voice
-	 * instead of Run Scan being the only one with a real answer.
-	 *
-	 * @param string $time       MySQL datetime this task last completed, or '' if never.
-	 * @param string $delta_text Pre-formatted delta phrase, or '' if none.
-	 * @return string
-	 */
-	private function format_last_run( $time, $delta_text ) {
-		if ( ! $time ) {
-			return __( 'Never run yet.', 'affiliate-link-manager' );
-		}
-
-		$relative = sprintf(
-			/* translators: %s: human-readable time difference, e.g. "2 hours" */
-			__( '%s ago', 'affiliate-link-manager' ),
-			human_time_diff( strtotime( $time ), current_time( 'timestamp' ) ) // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested -- human_time_diff() needs a plain Unix timestamp to diff against; current_time('timestamp') is the documented way to get one on the same WP-local basis $time itself was written with.
-		);
-
-		return $delta_text ? $relative . ' — ' . $delta_text : $relative;
-	}
-
-	/**
-	 * @param array{new_links?:int,now_stale?:int} $delta
-	 * @return string
-	 */
-	private function format_scan_delta( array $delta ) {
-		if ( empty( $delta ) ) {
-			return '';
-		}
-
-		$new_links = isset( $delta['new_links'] ) ? (int) $delta['new_links'] : 0;
-		$now_stale = isset( $delta['now_stale'] ) ? (int) $delta['now_stale'] : 0;
-
-		if ( 0 === $new_links && 0 === $now_stale ) {
-			return __( 'no changes', 'affiliate-link-manager' );
-		}
-
-		return sprintf(
-			/* translators: 1: number of new links found, 2: number of links that went stale */
-			__( '%1$d new, %2$d now stale', 'affiliate-link-manager' ),
-			$new_links,
-			$now_stale
-		);
-	}
-
-	/**
-	 * @param array{confirmed_shops?:int,confirmed_not?:int} $delta
-	 * @return string
-	 */
-	private function format_domain_check_delta( array $delta ) {
-		if ( empty( $delta ) ) {
-			return '';
-		}
-
-		$shops = isset( $delta['confirmed_shops'] ) ? (int) $delta['confirmed_shops'] : 0;
-		$not   = isset( $delta['confirmed_not'] ) ? (int) $delta['confirmed_not'] : 0;
-
-		if ( 0 === $shops && 0 === $not ) {
-			return __( 'nothing new to confirm', 'affiliate-link-manager' );
-		}
-
-		return sprintf(
-			/* translators: 1: number of domains confirmed to be real shops, 2: number confirmed not to be */
-			__( '%1$d confirmed shops, %2$d confirmed not', 'affiliate-link-manager' ),
-			$shops,
-			$not
-		);
-	}
-
-	/**
-	 * @param array{reclassified?:int,stale?:int} $delta
-	 * @return string
-	 */
-	private function format_shortener_delta( array $delta ) {
-		if ( empty( $delta ) ) {
-			return '';
-		}
-
-		$reclassified = isset( $delta['reclassified'] ) ? (int) $delta['reclassified'] : 0;
-		$stale        = isset( $delta['stale'] ) ? (int) $delta['stale'] : 0;
-
-		if ( 0 === $reclassified && 0 === $stale ) {
-			return __( 'nothing new to resolve', 'affiliate-link-manager' );
-		}
-
-		return sprintf(
-			/* translators: 1: number of shortened links tracked to a known network, 2: number confirmed dead */
-			__( '%1$d tracked, %2$d marked stale', 'affiliate-link-manager' ),
-			$reclassified,
-			$stale
-		);
-	}
-
-	/**
-	 * @param array{confirmed_dead?:int,still_fine?:int} $delta
-	 * @return string
-	 */
-	private function format_link_health_delta( array $delta ) {
-		if ( empty( $delta ) ) {
-			return '';
-		}
-
-		$confirmed_dead = isset( $delta['confirmed_dead'] ) ? (int) $delta['confirmed_dead'] : 0;
-
-		if ( 0 === $confirmed_dead ) {
-			return __( 'all still good', 'affiliate-link-manager' );
-		}
-
-		return sprintf(
-			/* translators: %d: number of candidate links confirmed dead and marked stale */
-			__( '%d confirmed dead', 'affiliate-link-manager' ),
-			$confirmed_dead
-		);
 	}
 }
