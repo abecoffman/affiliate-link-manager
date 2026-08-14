@@ -205,9 +205,23 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 		$merely_stale_id = $this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
 
 		$list_table = $this->make_list_table();
-		// No setAccessible() call -- deprecated since PHP 8.1, reflection
-		// methods are accessible by default from that version on.
 		$reflection = new ReflectionMethod( $list_table, 'bulk_remove' );
+		// setAccessible() is required on PHP < 8.1 (reflection methods
+		// aren't accessible by default before then) but calling it at
+		// all is a hard-failing deprecation as of PHP 8.5 under this
+		// suite's convertDeprecationsToExceptions setting, even though
+		// it's a harmless no-op on 8.1-8.4. No single unconditional call
+		// satisfies every PHP version this plugin (floor: 7.4) and this
+		// suite (tested up to 8.5 locally) actually run on, hence the
+		// version gate. Confirmed live: an earlier round removed this
+		// call entirely because it wasn't needed against the PHP 8.5
+		// used for local testing, which silently broke this test on
+		// every PHP version below 8.1 -- caught only once CI actually
+		// ran the integration suite on PHP 7.4, this plugin's own
+		// supported floor.
+		if ( PHP_VERSION_ID < 80100 ) {
+			$reflection->setAccessible( true );
+		}
 		$reflection->invoke( $list_table, array( $dead_id, $merely_stale_id ) );
 
 		$table = ALM_Install::table_name();
