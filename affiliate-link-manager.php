@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.19.1
+ * Version:     1.20.0
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.19.1' );
+define( 'ALM_VERSION', '1.20.0' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -92,6 +92,42 @@ function alm_run_domain_recheck_cron() {
 	// cron to catch it again.
 	$health_scanner = new ALM_Link_Health_Scanner( new ALM_Link_Health_Checker() );
 	$health_scanner->check_batch( 10, true );
+
+	// Third piggybacked job, same "housekeeping nobody's watching"
+	// reasoning: quietly deletes tracking rows for links that are
+	// status=stale (the scanner hasn't rediscovered them) AND were
+	// never confirmed dead (dead_confirmed_at IS NULL -- those go
+	// through the real, visible Dead Links flow instead, never this).
+	// This population can never resolve into anything else on its own
+	// -- only Candidates ever get health-checked, and a stale row
+	// isn't one -- so there's nothing for a user to ever review here;
+	// it's pure index bookkeeping, exactly the "maintenance of the
+	// index really needs to be abstracted from the user" ask. A link
+	// genuinely still on the page gets picked back up by a future scan
+	// (full or incremental, see alm_watchdog_reprime_stuck_tasks())
+	// well before this window closes; last_seen simply never advances
+	// again once a row goes stale, so it's a safe, if slightly
+	// conservative, proxy for "how long has this actually been gone."
+	global $wpdb;
+	$table = ALM_Install::table_name();
+	/**
+	 * How many days a status=stale, never-confirmed-dead link's
+	 * tracking row is kept before being quietly deleted.
+	 *
+	 * @param int $retention_days
+	 */
+	$retention_days = (int) apply_filters( 'alm_stale_link_retention_days', 60 );
+	// last_seen is stored via current_time('mysql') everywhere else in
+	// this plugin (site-local, not GMT) -- current_time('timestamp')
+	// (no $gmt flag) + gmdate() is WP's own idiom for computing another
+	// datetime on that same WP-local basis, avoiding a second,
+	// redundant timezone shift from PHP's own date(). Same established
+	// pattern (and same phpcs exception) as ALM_Admin::format_last_run().
+	$cutoff = gmdate( 'Y-m-d H:i:s', strtotime( "-{$retention_days} days", current_time( 'timestamp' ) ) ); // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested -- deliberate, see comment above.
+
+	$sql = "DELETE FROM {$table} WHERE status = %s AND dead_confirmed_at IS NULL AND last_seen < %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+	// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; a plain bulk delete, not a per-request query needing caching.
+	$wpdb->query( $wpdb->prepare( $sql, ALM_Install::STATUS_STALE, $cutoff ) );
 }
 add_action( 'alm_domain_recheck_cron', 'alm_run_domain_recheck_cron' );
 
@@ -218,8 +254,22 @@ function alm_continue_batch_run( $task_id ) {
 			$processed_this_batch = $result['checked'];
 			break;
 
+		case 'incremental_scan':
+			// alm_last_incremental_scan_time only ever changes once a
+			// run finishes (see scan_incremental_batch()'s own $done
+			// branch), so it's safe to read fresh on every tick of the
+			// same run -- it can't drift mid-run out from under this
+			// cursor the way "now" would.
+			$modified_since       = get_option( 'alm_last_incremental_scan_time', '1970-01-01 00:00:00' );
+			$scanner              = new ALM_Scanner( new ALM_Adapter_Registry(), new ALM_Provider_Registry(), new ALM_Candidate_Classifier() );
+			$result               = $scanner->scan_incremental_batch( $state['cursor'], $batch_size, $modified_since );
+			$done                 = $result['done'];
+			$processed_this_batch = $result['next_offset'] - $state['cursor'];
+			$state['cursor']      = $result['next_offset'];
+			break;
+
 		default:
-			// Not one of the four real tasks -- nothing to run. Cancels
+			// Not one of the five real tasks -- nothing to run. Cancels
 			// the tick just pre-scheduled above too, since this task_id
 			// will never legitimately do anything with it.
 			ALM_Background_Runner::release_lock( $task_id );
@@ -229,8 +279,9 @@ function alm_continue_batch_run( $task_id ) {
 
 	// domains/shorteners/link_health are all DB-state-driven (their
 	// own check_batch() re-queries "what's still unchecked" every
-	// time), so there's no cursor to persist for them -- only scan
-	// needed $state['cursor'] updated above, in its own branch.
+	// time), so there's no cursor to persist for them -- only scan and
+	// incremental_scan need $state['cursor'] updated above, in their
+	// own branches.
 	$state['processed']        += $processed_this_batch;
 	$state['reschedule_count'] += 1;
 
@@ -295,6 +346,64 @@ function alm_watchdog_reprime_stuck_tasks() {
 	}
 }
 add_action( 'alm_watchdog_cron', 'alm_watchdog_reprime_stuck_tasks' );
+
+/**
+ * The other half of the hourly watchdog's job -- unlike
+ * alm_watchdog_reprime_stuck_tasks() above (which only ever continues
+ * a run someone/something already started), this is the one place
+ * that ever starts a brand-new incremental_scan run with zero human
+ * action -- the automatic, unattended counterpart to clicking "Run
+ * Scan," so new/edited posts get classified without anyone having to
+ * remember to. Kept as its own function (not folded into the loop
+ * above) since starting new work is a meaningfully different
+ * responsibility from resuming stranded work, even though they share
+ * a trigger and fire in the same order every hour (this one second).
+ *
+ * @return void
+ */
+function alm_watchdog_maybe_start_incremental_scan() {
+	/**
+	 * Whether automatic incremental scanning runs at all -- an escape
+	 * hatch for a site that wants only manual, explicit "Run Scan"
+	 * clicks and nothing scanning content on its own.
+	 *
+	 * @param bool $enabled
+	 */
+	if ( ! apply_filters( 'alm_incremental_scan_enabled', true ) ) {
+		return;
+	}
+
+	$state = ALM_Background_Runner::get_state( 'incremental_scan' );
+	if ( $state['active'] ) {
+		// Already running -- or, if it had genuinely stranded, the
+		// reprime loop above already handled that this same tick.
+		return;
+	}
+
+	$modified_since = get_option( 'alm_last_incremental_scan_time', '1970-01-01 00:00:00' );
+	$scanner        = new ALM_Scanner( new ALM_Adapter_Registry(), new ALM_Provider_Registry(), new ALM_Candidate_Classifier() );
+
+	if ( 0 === $scanner->count_posts_modified_since( $modified_since ) ) {
+		// The common case most hours on a typical site -- nothing
+		// changed, so there's nothing worth spinning up a background
+		// run for.
+		return;
+	}
+
+	ALM_Background_Runner::save_state(
+		'incremental_scan',
+		array(
+			'active'           => true,
+			'cursor'           => 0,
+			'processed'        => 0,
+			'started_at'       => current_time( 'mysql' ),
+			'reschedule_count' => 0,
+			'stalled'          => false,
+		)
+	);
+	ALM_Background_Runner::schedule_next_tick( 'incremental_scan', ALM_Background_Runner::TASK_RESCHEDULE_DELAYS['incremental_scan'] );
+}
+add_action( 'alm_watchdog_cron', 'alm_watchdog_maybe_start_incremental_scan' );
 
 /**
  * Boot the plugin.

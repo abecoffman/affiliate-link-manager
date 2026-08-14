@@ -34,22 +34,28 @@ class ALM_Background_Runner {
 	// shared by both entry points that need them (ALM_Admin's AJAX
 	// handlers and alm_continue_batch_run() in the main plugin file)
 	// so the two can never quietly drift apart. Delays are gentle on
-	// purpose -- these three (all but scan) make real outbound HTTP
-	// requests to third-party sites, same "no reason to rush" reasoning
-	// as the existing daily alm_domain_recheck_cron's own comments;
-	// link_health is slowest per item given its two-attempt dead-retry.
+	// purpose -- three of these (domains/shorteners/link_health) make
+	// real outbound HTTP requests to third-party sites, same "no reason
+	// to rush" reasoning as the existing daily alm_domain_recheck_cron's
+	// own comments; link_health is slowest per item given its
+	// two-attempt dead-retry. scan/incremental_scan are both pure DB/
+	// HTML-parsing work, no outbound HTTP at all, hence the much
+	// shorter delay -- incremental_scan uses scan's own values exactly,
+	// same underlying cost shape, just a narrower post set.
 	const TASK_BATCH_SIZES = array(
-		'scan'        => 20,
-		'domains'     => 5,
-		'shorteners'  => 5,
-		'link_health' => 5,
+		'scan'             => 20,
+		'domains'          => 5,
+		'shorteners'       => 5,
+		'link_health'      => 5,
+		'incremental_scan' => 20,
 	);
 
 	const TASK_RESCHEDULE_DELAYS = array(
-		'scan'        => 2,
-		'domains'     => 8,
-		'shorteners'  => 8,
-		'link_health' => 10,
+		'scan'             => 2,
+		'domains'          => 8,
+		'shorteners'       => 8,
+		'link_health'      => 10,
+		'incremental_scan' => 2,
 	);
 
 	// Comfortably above the largest realistic backlog at today's batch

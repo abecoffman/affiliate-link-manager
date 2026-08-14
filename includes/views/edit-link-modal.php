@@ -71,8 +71,17 @@ if ( ! defined( 'ABSPATH' ) ) {
 		<div class="alm-modal-actions">
 			<div class="alm-modal-actions-secondary">
 				<a href="#" id="alm-edit-link-ignore" class="alm-modal-text-action"><?php esc_html_e( 'Ignore', 'affiliate-link-manager' ); ?></a>
+				<?php
+				// Only "Remove from Post" edits real, live post content --
+				// it's the only one of these three that keeps the red/
+				// danger treatment. "Delete Tracking Record" (renamed from
+				// bare "Delete") only touches this plugin's own tracking
+				// row, never the post -- reported live as confusing when
+				// both shared the identical red styling, implying they
+				// were equally consequential.
+				?>
 				<a href="#" id="alm-edit-link-remove" class="alm-modal-text-action alm-modal-text-action-danger" hidden><?php esc_html_e( 'Remove from Post', 'affiliate-link-manager' ); ?></a>
-				<a href="#" id="alm-edit-link-delete" class="alm-modal-text-action alm-modal-text-action-danger"><?php esc_html_e( 'Delete', 'affiliate-link-manager' ); ?></a>
+				<a href="#" id="alm-edit-link-delete" class="alm-modal-text-action"><?php esc_html_e( 'Delete Tracking Record', 'affiliate-link-manager' ); ?></a>
 			</div>
 			<div class="alm-modal-actions-primary">
 				<button type="button" id="alm-edit-link-cancel" class="button"><?php esc_html_e( 'Cancel', 'affiliate-link-manager' ); ?></button>

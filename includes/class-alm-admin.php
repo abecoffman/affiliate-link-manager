@@ -223,7 +223,7 @@ class ALM_Admin {
 					'saving'               => __( 'Saving…', 'affiliate-link-manager' ),
 					'cancel'               => __( 'Cancel', 'affiliate-link-manager' ),
 					'matching'             => __( 'Checking…', 'affiliate-link-manager' ),
-					'deleteConfirm'        => __( "Delete this link? This only removes it from Affiliate Link Manager's records -- it does not change the post.", 'affiliate-link-manager' ),
+					'deleteConfirm'        => __( "Delete this tracking record? This only removes it from Affiliate Link Manager's records -- your post is not changed.", 'affiliate-link-manager' ),
 					'removeConfirm'        => __( 'Remove this link from the post? This edits the post content directly (the link text stays, just unlinked) and deletes it from Affiliate Link Manager\'s records -- it can\'t be undone from here.', 'affiliate-link-manager' ),
 					'bulkRemoveWarn'       => __( 'Remove all selected dead links from their posts? This edits post content directly and can\'t be undone from here. Anything not confirmed dead is skipped.', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
@@ -568,7 +568,13 @@ class ALM_Admin {
 			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 404 );
 		}
 
-		if ( ALM_Install::STATUS_STALE !== $item['status'] ) {
+		// status=stale alone isn't enough -- see
+		// ALM_Links_List_Table::bulk_remove()'s own comment for why a
+		// merely not-rediscovered, never-confirmed-dead row must never
+		// reach this far. Real correctness bug found live: this check
+		// only ever verified $item['status'], even though this exact
+		// error message already claimed dead_confirmed_at was required.
+		if ( ALM_Install::STATUS_STALE !== $item['status'] || empty( $item['dead_confirmed_at'] ) ) {
 			wp_send_json_error( array( 'message' => __( 'Only a confirmed-dead link can be removed this way.', 'affiliate-link-manager' ) ), 400 );
 		}
 
@@ -657,9 +663,15 @@ class ALM_Admin {
 	}
 
 	public function render_dashboard() {
-		$stats           = $this->get_provider_stats();
-		$status_summary  = $this->get_status_summary();
-		$stale_count     = $this->get_stale_count();
+		$stats          = $this->get_provider_stats();
+		$status_summary = $this->get_status_summary();
+		// The old "Stale" tile counted every status=stale row, dead-
+		// confirmed or not -- the not-yet-cleaned-up not-rediscovered
+		// slice is pure background housekeeping now (see
+		// ALM_Links_List_Table::get_views()'s own docblock), never a
+		// number a user should have to interpret. This tile only ever
+		// shows the real, actionable count.
+		$dead_count      = ALM_Install::count_confirmed_dead();
 		$network_signals = $this->network_signal_scanner->scan();
 		$tasks           = $this->get_dashboard_tasks();
 		require ALM_PATH . 'includes/views/dashboard.php';
@@ -740,25 +752,6 @@ class ALM_Admin {
 			ALM_Install::STATUS_CONVERTIBLE  => isset( $by_status[ ALM_Install::STATUS_CONVERTIBLE ] ) ? (int) $by_status[ ALM_Install::STATUS_CONVERTIBLE ] : 0,
 			ALM_Install::STATUS_UNCLASSIFIED => isset( $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] ) ? (int) $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] : 0,
 		);
-	}
-
-	/**
-	 * The Stale count shown as a third row on the Dashboard's headline
-	 * table, only when non-zero -- a link no longer found on the last
-	 * scan. Used to live in its own "Needs attention" card alongside a
-	 * repeat of the Candidate count already shown in the headline table;
-	 * folded into a single row here instead of two places saying the
-	 * same thing about Candidates.
-	 *
-	 * @return int
-	 */
-	private function get_stale_count() {
-		global $wpdb;
-		$table = ALM_Install::table_name();
-
-		$sql = "SELECT COUNT(*) FROM {$table} WHERE status = %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
-		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
-		return (int) $wpdb->get_var( $wpdb->prepare( $sql, ALM_Install::STATUS_STALE ) );
 	}
 
 	/**

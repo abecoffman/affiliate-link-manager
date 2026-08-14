@@ -2,8 +2,8 @@
 /**
  * Dashboard screen: a one-sentence framing of what this plugin does,
  * an Overview stat grid showing the current state (Affiliate Links /
- * Candidate Affiliate Links / Stale when present, plus a per-network
- * breakdown), and a Tasks table -- one row per background operation
+ * Candidate Affiliate Links / Dead Links when present, plus a
+ * per-network breakdown), and a Tasks table -- one row per background operation
  * (Scan, Check Domains, Expand Shortened Links), each shaped
  * identically: what it does, what happened last time it ran, how much
  * is left, one button. Replaces an earlier version where those three
@@ -16,7 +16,7 @@
  *
  * @var array<string,array{label:string,count:int}> $stats
  * @var array<string,int>                            $status_summary
- * @var int                                           $stale_count
+ * @var int                                           $dead_count
  * @var array<string,array{label:string,count:int,sample_url:string}> $network_signals
  * @var array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool,running:bool,processed_so_far:int,stalled:bool}> $tasks
  */
@@ -54,9 +54,9 @@ $alm_links_url = static function ( $args = array() ) {
 				<span class="alm-stat-tile-number"><?php echo esc_html( $status_summary[ ALM_Install::STATUS_CONVERTIBLE ] ); ?></span>
 				<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_CONVERTIBLE, true ) ); ?></span>
 			</a>
-			<?php if ( $stale_count > 0 ) : ?>
-				<a class="alm-stat-tile alm-stat-tile-stale" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_STALE ) ) ); ?>">
-					<span class="alm-stat-tile-number"><?php echo esc_html( $stale_count ); ?></span>
+			<?php if ( $dead_count > 0 ) : ?>
+				<a class="alm-stat-tile alm-stat-tile-dead" href="<?php echo esc_url( $alm_links_url( array( 'status' => 'dead' ) ) ); ?>">
+					<span class="alm-stat-tile-number"><?php echo esc_html( $dead_count ); ?></span>
 					<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_STALE, true ) ); ?></span>
 				</a>
 			<?php endif; ?>

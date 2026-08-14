@@ -132,6 +132,82 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 		$list_table = $this->make_list_table();
 		$list_table->prepare_items();
 
-		$this->assertCount( 2, $list_table->items, 'The "Stale" tab itself is untouched by this round -- still the broader, unfiltered bucket.' );
+		$this->assertCount( 2, $list_table->items, 'A direct ?status=stale URL (no longer linked from anywhere) still matches the raw status literally -- low priority, not part of any user-facing flow anymore.' );
+	}
+
+	/**
+	 * "Stale" is no longer a leaked implementation detail anywhere a
+	 * user actually browses -- see get_views()'s own docblock. A
+	 * merely-not-rediscovered, never-confirmed-dead row is pure
+	 * background housekeeping (cleaned up quietly by cron), never
+	 * something to review.
+	 */
+	public function test_all_tab_excludes_merely_stale_non_dead_rows_but_keeps_confirmed_dead_ones() {
+		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
+		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
+		$this->insert_link( 'https://still-a-candidate.example.com/c', ALM_Install::STATUS_CONVERTIBLE, null );
+
+		$list_table = $this->make_list_table();
+		$list_table->prepare_items();
+
+		$urls = wp_list_pluck( $list_table->items, 'url' );
+		$this->assertContains( 'https://confirmed-dead.example.com/a', $urls );
+		$this->assertContains( 'https://still-a-candidate.example.com/c', $urls );
+		$this->assertNotContains( 'https://merely-swept-stale.example.com/b', $urls, 'A merely not-rediscovered, never-confirmed-dead row must never show up in "All" either.' );
+	}
+
+	public function test_nav_tabs_no_longer_include_a_bare_stale_entry() {
+		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
+		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
+
+		$views = $this->make_list_table()->get_views();
+
+		$this->assertArrayNotHasKey( ALM_Install::STATUS_STALE, $views, '"Stale" is not a browsable nav tab anymore -- only "Dead Links" (its confirmed-dead slice) is.' );
+		$this->assertArrayHasKey( 'dead', $views );
+	}
+
+	/**
+	 * Real correctness bug found live: bulk_remove() (dispatched by
+	 * process_bulk_action() for the remove_dead_links action) used to
+	 * gate only on status=stale, even though "Only a confirmed-dead
+	 * link can be removed this way" was already the claimed behavior.
+	 * A mixed selection must only ever actually remove the genuinely
+	 * confirmed-dead row.
+	 *
+	 * Calls the private bulk_remove() directly via reflection rather
+	 * than the full process_bulk_action() -- that method always ends
+	 * in wp_safe_redirect()+exit on success (a real request's normal
+	 * post-action flow), which has nothing to do with the gating logic
+	 * itself and can't run headers-already-sent inside a CLI test
+	 * process. See AjaxBatchRunIntegrationTest/RemoveLinkIntegrationTest
+	 * for the equivalent coverage through a real request for the
+	 * *other* entry point (the single-row AJAX handler).
+	 */
+	public function test_bulk_remove_dead_links_only_processes_confirmed_dead_rows() {
+		$post_id = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://confirmed-dead.example.com/a">boots</a> now.</p>',
+			)
+		);
+
+		$dead_id = $this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
+		global $wpdb;
+		$wpdb->update( ALM_Install::table_name(), array( 'post_id' => $post_id, 'location' => '0' ), array( 'id' => $dead_id ) );
+
+		$merely_stale_id = $this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
+
+		$list_table = $this->make_list_table();
+		// No setAccessible() call -- deprecated since PHP 8.1, reflection
+		// methods are accessible by default from that version on.
+		$reflection = new ReflectionMethod( $list_table, 'bulk_remove' );
+		$reflection->invoke( $list_table, array( $dead_id, $merely_stale_id ) );
+
+		$table = ALM_Install::table_name();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input.
+		$remaining_ids = array_map( 'intval', $wpdb->get_col( "SELECT id FROM {$table}" ) );
+
+		$this->assertNotContains( $dead_id, $remaining_ids, 'The confirmed-dead row was actually removed.' );
+		$this->assertContains( $merely_stale_id, $remaining_ids, 'The merely-stale, never-confirmed-dead row must be skipped, not removed -- it has nothing to unwrap and was never confirmed dead.' );
 	}
 }

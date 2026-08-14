@@ -21,7 +21,7 @@
  */
 class BackgroundRunnerIntegrationTest extends WP_UnitTestCase {
 
-	private const TASK_IDS = array( 'scan', 'domains', 'shorteners', 'link_health' );
+	private const TASK_IDS = array( 'scan', 'domains', 'shorteners', 'link_health', 'incremental_scan' );
 
 	public function set_up() {
 		parent::set_up();
@@ -367,5 +367,208 @@ class BackgroundRunnerIntegrationTest extends WP_UnitTestCase {
 		$state = ALM_Background_Runner::get_state( 'scan' );
 		$this->assertFalse( $state['active'] );
 		$this->assertNotEmpty( get_option( 'alm_last_scan_time', '' ), 'ALM_Scanner::scan_batch() itself never sets this -- alm_continue_batch_run() must, exactly mirroring ALM_Admin::handle_scan_batch()\'s own line.' );
+	}
+
+	/**
+	 * @param int    $post_id
+	 * @param string $mysql_datetime
+	 * @return void
+	 */
+	private function backdate_post( $post_id, $mysql_datetime ) {
+		global $wpdb;
+		// A direct DB write, not wp_update_post() -- that would just
+		// reset post_modified(_gmt) back to "now" on save, defeating
+		// the whole point of backdating it.
+		$wpdb->update(
+			$wpdb->posts,
+			array(
+				'post_modified'     => $mysql_datetime,
+				'post_modified_gmt' => $mysql_datetime,
+			),
+			array( 'ID' => $post_id )
+		);
+		clean_post_cache( $post_id );
+	}
+
+	public function test_scan_incremental_batch_only_covers_posts_modified_since_the_checkpoint() {
+		$old_post = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://old-post-retailer.example.com/product">boots</a>.</p>',
+			)
+		);
+		$this->backdate_post( $old_post, '2020-01-01 00:00:00' );
+
+		$recent_post = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://recent-post-retailer.example.com/product">shoes</a>.</p>',
+			)
+		);
+		// A fresh post's post_modified is already "now" -- no backdating
+		// needed for this one.
+
+		$scanner = new ALM_Scanner( new ALM_Adapter_Registry(), new ALM_Provider_Registry(), new ALM_Candidate_Classifier() );
+		$scanner->scan_incremental_batch( 0, 20, '2024-01-01 00:00:00' );
+
+		global $wpdb;
+		$table = ALM_Install::table_name();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input.
+		$scanned_post_ids = $wpdb->get_col( "SELECT DISTINCT post_id FROM {$table}" );
+
+		$this->assertContains( $recent_post, array_map( 'intval', $scanned_post_ids ), 'The recently-modified post must be covered.' );
+		$this->assertNotContains( $old_post, array_map( 'intval', $scanned_post_ids ), 'A post modified before the checkpoint must not be touched by an incremental run.' );
+	}
+
+	public function test_scan_incremental_batch_never_sweeps_stale_links() {
+		// A real candidate tied to a post an incremental run never
+		// covers (old, unmodified) -- if the sweep ran here, this
+		// would incorrectly flip to stale despite nothing about it
+		// actually having changed.
+		$untouched_post = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://untouched-retailer.example.com/product">bag</a>.</p>',
+			)
+		);
+		$this->backdate_post( $untouched_post, '2020-01-01 00:00:00' );
+
+		global $wpdb;
+		$wpdb->insert(
+			ALM_Install::table_name(),
+			array(
+				'post_id'     => $untouched_post,
+				'provider'    => 'unclassified',
+				'adapter'     => 'post_content',
+				'location'    => '0',
+				'url'         => 'https://untouched-retailer.example.com/product',
+				'anchor_text' => 'bag',
+				'status'      => ALM_Install::STATUS_CONVERTIBLE,
+				'first_seen'  => '2020-01-01 00:00:00',
+				'last_seen'   => '2020-01-01 00:00:00',
+			)
+		);
+
+		$recent_post = self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://recent-retailer.example.com/product">shoes</a>.</p>',
+			)
+		);
+
+		$scanner = new ALM_Scanner( new ALM_Adapter_Registry(), new ALM_Provider_Registry(), new ALM_Candidate_Classifier() );
+		$scanner->scan_incremental_batch( 0, 20, '2024-01-01 00:00:00' );
+
+		$table = ALM_Install::table_name();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input.
+		$status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM {$table} WHERE post_id = %d", $untouched_post ) );
+		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $status, 'An incremental run must never sweep links in posts it did not cover.' );
+	}
+
+	public function test_scan_incremental_batch_checkpoints_to_when_the_run_started_not_when_it_finished() {
+		self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://checkpoint-retailer.example.com/product">hat</a>.</p>',
+			)
+		);
+
+		// Simulates a continuation tick (offset > 0) of a run that
+		// began earlier -- update_option('alm_incremental_scan_started_at')
+		// only happens on offset===0 (see the top of scan_incremental_batch()
+		// itself), so calling with offset=0 here would just overwrite this
+		// pre-seeded value with "now" before ever reaching the $done
+		// branch this test is actually about.
+		update_option( 'alm_incremental_scan_started_at', '2024-06-01 12:00:00' );
+
+		$scanner = new ALM_Scanner( new ALM_Adapter_Registry(), new ALM_Provider_Registry(), new ALM_Candidate_Classifier() );
+		// offset=1 with a batch_size larger than any possible remaining
+		// result set -- done=true on this single call, without ever
+		// touching alm_incremental_scan_started_at.
+		$scanner->scan_incremental_batch( 1, 500, '2024-01-01 00:00:00' );
+
+		$this->assertSame(
+			'2024-06-01 12:00:00',
+			get_option( 'alm_last_incremental_scan_time' ),
+			'Must checkpoint to when the run started, not "now" -- a post modified while the run was still in progress must still be caught by the next run.'
+		);
+	}
+
+	public function test_watchdog_starts_a_new_incremental_scan_when_a_post_has_been_modified() {
+		self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://watchdog-start-retailer.example.com/product">hat</a>.</p>',
+			)
+		);
+		// Fresh post's post_modified is "now" -- well after the default
+		// epoch checkpoint used when alm_last_incremental_scan_time has
+		// never been set.
+
+		$this->assertFalse( $this->get_incremental_state()['active'] );
+
+		alm_watchdog_maybe_start_incremental_scan();
+
+		$state = $this->get_incremental_state();
+		$this->assertTrue( $state['active'] );
+		$this->assertNotFalse( wp_next_scheduled( 'alm_continue_batch_run', array( 'incremental_scan' ) ), 'The first tick must be primed immediately, same as every other task\'s first click.' );
+	}
+
+	public function test_watchdog_does_not_start_a_run_when_nothing_has_changed() {
+		// Checkpoint set to right now -- nothing in this fresh test DB
+		// can have a post_modified_gmt after this instant.
+		update_option( 'alm_last_incremental_scan_time', current_time( 'mysql', true ) );
+
+		alm_watchdog_maybe_start_incremental_scan();
+
+		$this->assertFalse( $this->get_incremental_state()['active'], 'Nothing changed -- must not spin up a background run for zero work.' );
+	}
+
+	public function test_watchdog_does_not_start_a_second_run_when_one_is_already_active() {
+		ALM_Background_Runner::save_state(
+			'incremental_scan',
+			array(
+				'active'           => true,
+				'cursor'           => 40,
+				'processed'        => 40,
+				'started_at'       => current_time( 'mysql' ),
+				'reschedule_count' => 2,
+				'stalled'          => false,
+			)
+		);
+
+		self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://watchdog-already-active.example.com/product">hat</a>.</p>',
+			)
+		);
+
+		alm_watchdog_maybe_start_incremental_scan();
+
+		$state = $this->get_incremental_state();
+		$this->assertSame( 40, $state['cursor'], 'An already-active run must not be reset back to a fresh start.' );
+	}
+
+	public function test_watchdog_respects_the_incremental_scan_enabled_filter() {
+		self::factory()->post->create(
+			array(
+				'post_status'  => 'publish',
+				'post_content' => '<p>Get the <a href="https://watchdog-disabled-retailer.example.com/product">hat</a>.</p>',
+			)
+		);
+
+		add_filter( 'alm_incremental_scan_enabled', '__return_false' );
+		alm_watchdog_maybe_start_incremental_scan();
+		remove_filter( 'alm_incremental_scan_enabled', '__return_false' );
+
+		$this->assertFalse( $this->get_incremental_state()['active'], 'The escape hatch must actually prevent a new run from starting.' );
+	}
+
+	/**
+	 * @return array{active:bool,cursor:int,processed:int,started_at:string,reschedule_count:int,stalled:bool}
+	 */
+	private function get_incremental_state() {
+		return ALM_Background_Runner::get_state( 'incremental_scan' );
 	}
 }

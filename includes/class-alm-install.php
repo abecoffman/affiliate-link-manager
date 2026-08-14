@@ -106,6 +106,27 @@ class ALM_Install {
 	}
 
 	/**
+	 * Single source of truth for "how many links are confirmed dead" --
+	 * used by both ALM_Links_List_Table's Dead Links tab count and the
+	 * Dashboard's own stat tile, so the two can never quietly drift
+	 * apart the way two separate near-identical queries risked. Not a
+	 * real ALM_Install::STATUS_* value on its own -- "confirmed dead"
+	 * is the status=stale AND dead_confirmed_at IS NOT NULL slice; see
+	 * create_table()'s own docblock for why status=stale alone can't
+	 * carry this distinction.
+	 *
+	 * @return int
+	 */
+	public static function count_confirmed_dead() {
+		global $wpdb;
+		$table = self::table_name();
+
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE status = %s AND dead_confirmed_at IS NOT NULL"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
+		return (int) $wpdb->get_var( $wpdb->prepare( $sql, self::STATUS_STALE ) );
+	}
+
+	/**
 	 * Per-domain cache of ALM_Domain_Checker's real-content verdict --
 	 * one row per unique domain, not per link, so a domain with 200
 	 * links only ever costs one outbound HTTP request. See
@@ -240,6 +261,9 @@ class ALM_Install {
 		delete_option( 'alm_link_health_started_at' );
 		delete_option( 'alm_last_link_health_time' );
 		delete_option( 'alm_last_link_health_delta' );
+		delete_option( 'alm_incremental_scan_started_at' );
+		delete_option( 'alm_last_incremental_scan_time' );
+		delete_option( 'alm_last_incremental_scan_delta' );
 		delete_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID );
 		delete_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID );
 
@@ -252,6 +276,7 @@ class ALM_Install {
 		delete_option( 'alm_domains_run_state' );
 		delete_option( 'alm_shorteners_run_state' );
 		delete_option( 'alm_link_health_run_state' );
+		delete_option( 'alm_incremental_scan_run_state' );
 
 		wp_clear_scheduled_hook( 'alm_domain_recheck_cron' );
 		wp_clear_scheduled_hook( 'alm_watchdog_cron' );
@@ -259,5 +284,6 @@ class ALM_Install {
 		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'domains' ) );
 		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'shorteners' ) );
 		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'link_health' ) );
+		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'incremental_scan' ) );
 	}
 }

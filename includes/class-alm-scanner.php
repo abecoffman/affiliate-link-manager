@@ -141,6 +141,140 @@ class ALM_Scanner {
 	}
 
 	/**
+	 * Scan one batch of *only the posts modified since $modified_since*
+	 * -- the automatic, unattended counterpart to scan_batch() (which
+	 * always covers every scannable post). Lets new/edited content get
+	 * classified without anyone remembering to click "Run Scan" -- see
+	 * alm_watchdog_reprime_stuck_tasks() in the main plugin file for
+	 * what actually triggers a run.
+	 *
+	 * Deliberately never calls sweep_stale_links(): that step trusts
+	 * the run just covered *every* scannable post, so anything not
+	 * re-seen must be genuinely gone. An incremental run only ever
+	 * covers a subset -- running the same sweep after it would
+	 * incorrectly mark links in completely untouched, unrelated posts
+	 * as stale.
+	 *
+	 * Same ID-ordered pagination as scan_batch(), for the same reason:
+	 * a stable sort key means offset-based pagination stays correct
+	 * even if more posts get modified while a multi-batch run is still
+	 * in progress. The one thing that *does* need to account for that
+	 * possibility is the completion checkpoint -- see the $done branch
+	 * below.
+	 *
+	 * @param int    $offset
+	 * @param int    $batch_size
+	 * @param string $modified_since MySQL datetime (GMT) -- only posts
+	 *                                modified after this are considered.
+	 * @return array {
+	 *     @type bool $done        True once every currently-matching post has been scanned.
+	 *     @type int  $next_offset Offset to resume from on the next tick.
+	 *     @type int  $links_found Links found in this batch.
+	 * }
+	 */
+	public function scan_incremental_batch( $offset, $batch_size, $modified_since ) {
+		// Checkpointed to when *this run* started, not "now" once it
+		// finishes -- a post modified while the run was still in
+		// progress must still be caught by the *next* run, the same
+		// "trust the start time, not the finish time" reasoning
+		// scan_batch()'s own alm_scan_started_at already relies on.
+		if ( 0 === $offset ) {
+			update_option( 'alm_incremental_scan_started_at', current_time( 'mysql' ) );
+		}
+
+		$query = new WP_Query(
+			array(
+				'post_type'      => $this->get_scannable_post_types(),
+				'post_status'    => 'publish',
+				'fields'         => 'ids',
+				'posts_per_page' => $batch_size,
+				'offset'         => $offset,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				'date_query'     => array(
+					array(
+						'column' => 'post_modified_gmt',
+						'after'  => $modified_since,
+					),
+				),
+			)
+		);
+
+		$post_ids    = $query->posts;
+		$links_found = 0;
+
+		foreach ( $post_ids as $post_id ) {
+			$links_found += $this->scan_post( (int) $post_id );
+		}
+
+		$done = count( $post_ids ) < $batch_size;
+
+		if ( $done ) {
+			$started_at = get_option( 'alm_incremental_scan_started_at', '' );
+			if ( $started_at ) {
+				update_option( 'alm_last_incremental_scan_time', $started_at );
+				$this->record_incremental_scan_delta( $started_at );
+			}
+		}
+
+		return array(
+			'done'        => $done,
+			'next_offset' => $offset + count( $post_ids ),
+			'links_found' => $links_found,
+		);
+	}
+
+	/**
+	 * How many posts currently qualify for the *next* incremental run
+	 * -- used by alm_watchdog_reprime_stuck_tasks() to decide whether
+	 * there's actually anything to do before spinning up a background
+	 * run for zero work.
+	 *
+	 * @param string $modified_since MySQL datetime (GMT).
+	 * @return int
+	 */
+	public function count_posts_modified_since( $modified_since ) {
+		$query = new WP_Query(
+			array(
+				'post_type'      => $this->get_scannable_post_types(),
+				'post_status'    => 'publish',
+				'fields'         => 'ids',
+				'posts_per_page' => 1,
+				'date_query'     => array(
+					array(
+						'column' => 'post_modified_gmt',
+						'after'  => $modified_since,
+					),
+				),
+			)
+		);
+
+		return (int) $query->found_posts;
+	}
+
+	/**
+	 * Records what an incremental run found -- kept for future use/
+	 * wp-cli inspection, same lightweight shape as record_scan_delta(),
+	 * but (deliberately, unlike that one) never rendered anywhere in
+	 * the admin UI -- this whole mechanism is meant to be fully
+	 * invisible background housekeeping, not one more thing to look at.
+	 *
+	 * @param string $started_at MySQL datetime this run began.
+	 * @return void
+	 */
+	private function record_incremental_scan_delta( $started_at ) {
+		global $wpdb;
+		$table = ALM_Install::table_name();
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+		$new_links = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(*) FROM {$table} WHERE first_seen >= %s", $started_at ) );
+
+		update_option(
+			'alm_last_incremental_scan_delta',
+			array( 'new_links' => $new_links )
+		);
+	}
+
+	/**
 	 * A link not re-discovered during the scan that just finished
 	 * (its last_seen still predates when this run started) either had
 	 * its link removed from the post, or the post itself is gone

@@ -593,11 +593,16 @@
 			deleteLink.href = link.getAttribute( 'data-delete-url' );
 
 			// Remove from Post only makes sense for a confirmed-dead link
-			// -- see ALM_Link_Converter::remove(). AJAX-driven, not a
-			// plain nonce'd link like Ignore/Delete, since this can fail
-			// (the same content-changed-since-scan wall Save can hit) and
-			// needs to show that inline rather than just redirecting.
-			removeLink.hidden = 'stale' !== link.getAttribute( 'data-status' );
+			// -- see ALM_Link_Converter::remove(). data-status alone isn't
+			// enough (a merely not-rediscovered, never-confirmed-dead row
+			// also carries data-status="stale" -- see
+			// ALM_Links_List_Table::bulk_remove()'s own comment for why
+			// that distinction matters), hence the separate
+			// data-dead-confirmed attribute. AJAX-driven, not a plain
+			// nonce'd link like Ignore/Delete, since this can fail (the
+			// same content-changed-since-scan wall Save can hit) and needs
+			// to show that inline rather than just redirecting.
+			removeLink.hidden = '1' !== link.getAttribute( 'data-dead-confirmed' );
 
 			// Only present for a shortened link ALM_Shortener_Scanner has
 			// already resolved -- "Use this URL" fills the field with it
