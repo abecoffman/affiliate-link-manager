@@ -42,7 +42,10 @@ jobs:
         image: mysql:8.0
         env:
           MYSQL_ALLOW_EMPTY_PASSWORD: true
-          MYSQL_DATABASE: wordpress_test
+          # No MYSQL_DATABASE here -- bin/install-wp-tests.sh creates its
+          # own test DB, and if one by that name already exists it drops
+          # into an interactive "reinstall? [y/N]" prompt with no stdin
+          # in CI, hanging/failing the job.
         ports:
           - 3306:3306
         options: >-
