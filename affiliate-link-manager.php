@@ -76,12 +76,25 @@ function alm_unschedule_domain_recheck_cron() {
  * @return void
  */
 function alm_run_domain_recheck_cron() {
+	// Same real failure mode alm_continue_batch_run() was fixed for --
+	// two of the three jobs below make outbound HTTP requests with
+	// redirect chains that can, on a bad day, chew through PHP's
+	// default max_execution_time before finishing even one batch (see
+	// that function's own docblock for the fully diagnosed root
+	// cause). This path runs on WP-Cron with nobody watching a
+	// progress bar, so a generous ceiling costs nothing.
+	set_time_limit( 240 ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_set_time_limit -- deliberate, see comment above.
+
 	$scanner = new ALM_Domain_Scanner( new ALM_Domain_Checker(), new ALM_Candidate_Classifier() );
-	// Small and slow on purpose: a background job with nobody watching
-	// a progress bar has no reason to rush, and a low batch size keeps
-	// this well clear of a shared host's max_execution_time even on a
-	// slow day for the domains being checked.
-	$scanner->check_batch( 20 );
+	// Batch size sourced from ALM_Background_Runner::TASK_BATCH_SIZES
+	// rather than a second hardcoded number here -- those values are
+	// the ones already vetted against this same timeout risk (see its
+	// own docblock), and a hardcoded duplicate here would only be able
+	// to quietly drift out of step with them, previously in the wrong
+	// direction (this cron used to run a *larger* batch than the
+	// deliberately-tuned continuation path, with no set_time_limit()
+	// override at all).
+	$scanner->check_batch( ALM_Background_Runner::TASK_BATCH_SIZES['domains'] );
 
 	// Piggybacks the same daily cron event rather than adding a second
 	// one for a very similar "housekeeping nobody's watching" job --
@@ -91,7 +104,7 @@ function alm_run_domain_recheck_cron() {
 	// rediscovers it in post content, at which point it needs this same
 	// cron to catch it again.
 	$health_scanner = new ALM_Link_Health_Scanner( new ALM_Link_Health_Checker() );
-	$health_scanner->check_batch( 10, true );
+	$health_scanner->check_batch( ALM_Background_Runner::TASK_BATCH_SIZES['link_health'], true );
 
 	// Third piggybacked job, same "housekeeping nobody's watching"
 	// reasoning: quietly deletes tracking rows for links that are

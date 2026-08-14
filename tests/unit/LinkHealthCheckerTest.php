@@ -40,7 +40,7 @@ class LinkHealthCheckerTest extends TestCase {
 	 * @return void
 	 */
 	private function mock_response( $status ) {
-		Functions\when( 'wp_remote_get' )->justReturn( array( 'response' => array( 'code' => $status ) ) );
+		Functions\when( 'wp_safe_remote_get' )->justReturn( array( 'response' => array( 'code' => $status ) ) );
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( $status );
 	}
 
@@ -99,7 +99,7 @@ class LinkHealthCheckerTest extends TestCase {
 	 */
 	public function test_a_recovering_retry_overrides_the_first_attempts_dead_reading() {
 		$call_count = 0;
-		Functions\when( 'wp_remote_get' )->alias(
+		Functions\when( 'wp_safe_remote_get' )->alias(
 			function () use ( &$call_count ) {
 				++$call_count;
 				return array( 'response' => array( 'code' => 1 === $call_count ? 404 : 200 ) );
@@ -122,7 +122,7 @@ class LinkHealthCheckerTest extends TestCase {
 		$this->mock_response( 404 );
 
 		$call_count = 0;
-		Functions\when( 'wp_remote_get' )->alias(
+		Functions\when( 'wp_safe_remote_get' )->alias(
 			function () use ( &$call_count ) {
 				++$call_count;
 				return array( 'response' => array( 'code' => 404 ) );
@@ -140,7 +140,7 @@ class LinkHealthCheckerTest extends TestCase {
 	 * confirmation as a 404/410.
 	 */
 	public function test_a_confirmed_dns_failure_is_dead() {
-		Functions\when( 'wp_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'cURL error 6: Could not resolve host: this-domain-does-not-exist.example' ) );
+		Functions\when( 'wp_safe_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'cURL error 6: Could not resolve host: this-domain-does-not-exist.example' ) );
 
 		$result = ( new NoSleepLinkHealthChecker() )->check( 'https://this-domain-does-not-exist.example/product' );
 
@@ -154,7 +154,7 @@ class LinkHealthCheckerTest extends TestCase {
 	 * is trusted as dead. See class docblock.
 	 */
 	public function test_a_non_dns_transport_error_is_never_treated_as_dead() {
-		Functions\when( 'wp_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'Connection timed out after 8001 milliseconds' ) );
+		Functions\when( 'wp_safe_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'Connection timed out after 8001 milliseconds' ) );
 
 		$result = ( new NoSleepLinkHealthChecker() )->check( 'https://slow-or-down.example.com/product' );
 

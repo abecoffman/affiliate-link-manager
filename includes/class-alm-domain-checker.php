@@ -36,7 +36,14 @@ class ALM_Domain_Checker {
 	 * @return array{is_shop:bool|null,signals:string[],http_status:int|null}
 	 */
 	public function check( $url ) {
-		$response = wp_remote_get(
+		// wp_safe_remote_get(), not wp_remote_get() -- this follows up
+		// to 3 redirects auto-followed by WP core itself, and the
+		// destination of each of those hops is exactly as unvalidated
+		// as the shortener resolver's own manual hop-by-hop walk (see
+		// that class's docblock for the fuller SSRF reasoning); the
+		// "safe" variant blocks any hop that resolves to a private/
+		// reserved IP range.
+		$response = wp_safe_remote_get(
 			$url,
 			array(
 				'timeout'     => self::TIMEOUT,

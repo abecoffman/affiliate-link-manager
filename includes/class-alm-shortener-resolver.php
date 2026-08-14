@@ -146,11 +146,15 @@ class ALM_Shortener_Resolver {
 			// wp_safe_remote_head(), not wp_remote_head() -- this
 			// follows a chain of URLs supplied by post content, up to
 			// MAX_HOPS deep; the "safe" variant blocks requests to
-			// private/reserved IP ranges (WP core's own SSRF guard),
-			// load-bearing here in a way it isn't for
-			// ALM_Domain_Checker (which only ever fetches an already-
-			// scanned link's own already-public URL directly, not
-			// something that redirects it somewhere new each hop).
+			// private/reserved IP ranges (WP core's own SSRF guard).
+			// This class walks the chain itself one hop at a time
+			// (redirection => 0 below) rather than letting WP core
+			// auto-follow, so it can record each hop's destination --
+			// but the underlying risk is the same one ALM_Domain_Checker/
+			// ALM_Link_Health_Checker/ALM_Thumbnail_Fetcher guard against
+			// too (they let WP core auto-follow instead, which applies
+			// this same check to each of *its* hops). All four use the
+			// "safe" variant for exactly this reason.
 			$response = wp_safe_remote_head(
 				$current,
 				array(

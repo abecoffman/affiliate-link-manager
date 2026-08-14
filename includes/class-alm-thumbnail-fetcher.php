@@ -45,7 +45,11 @@ class ALM_Thumbnail_Fetcher {
 	 * @return array{thumbnail_url:string|null}
 	 */
 	public function fetch( $url ) {
-		$response = wp_remote_get(
+		// wp_safe_remote_get(), not wp_remote_get() -- see
+		// ALM_Domain_Checker::check()'s identical comment; this follows
+		// up to MAX_REDIRECTS hops auto-followed by WP core, and each
+		// hop's destination needs the same SSRF guard.
+		$response = wp_safe_remote_get(
 			$url,
 			array(
 				'timeout'     => self::TIMEOUT,

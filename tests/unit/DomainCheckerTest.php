@@ -30,7 +30,7 @@ class DomainCheckerTest extends TestCase {
 	 * @return void
 	 */
 	private function mock_response( $body, $status = 200 ) {
-		Functions\when( 'wp_remote_get' )->justReturn( array( 'response' => array( 'code' => $status ) ) );
+		Functions\when( 'wp_safe_remote_get' )->justReturn( array( 'response' => array( 'code' => $status ) ) );
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( $status );
 		Functions\when( 'wp_remote_retrieve_body' )->justReturn( $body );
 	}
@@ -128,7 +128,7 @@ class DomainCheckerTest extends TestCase {
 	}
 
 	public function test_a_failed_request_returns_an_unknown_verdict_not_false() {
-		Functions\when( 'wp_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'Connection timed out' ) );
+		Functions\when( 'wp_safe_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'Connection timed out' ) );
 
 		$result = ( new \ALM_Domain_Checker() )->check( 'https://unreachable.example.com/product' );
 

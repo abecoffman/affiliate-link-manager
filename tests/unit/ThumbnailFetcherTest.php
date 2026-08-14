@@ -40,7 +40,7 @@ class ThumbnailFetcherTest extends TestCase {
 	 * @return void
 	 */
 	private function mock_response( $body, $status = 200 ) {
-		Functions\when( 'wp_remote_get' )->justReturn( array( 'response' => array( 'code' => $status ) ) );
+		Functions\when( 'wp_safe_remote_get' )->justReturn( array( 'response' => array( 'code' => $status ) ) );
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( $status );
 		Functions\when( 'wp_remote_retrieve_body' )->justReturn( $body );
 	}
@@ -96,7 +96,7 @@ class ThumbnailFetcherTest extends TestCase {
 	}
 
 	public function test_a_failed_request_returns_null_not_an_error() {
-		Functions\when( 'wp_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'Timed out' ) );
+		Functions\when( 'wp_safe_remote_get' )->justReturn( new \WP_Error( 'http_request_failed', 'Timed out' ) );
 
 		$result = ( new \ALM_Thumbnail_Fetcher() )->fetch( 'https://unreachable.example.com/product' );
 
