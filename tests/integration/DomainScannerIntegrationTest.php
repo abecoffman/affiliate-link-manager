@@ -93,11 +93,11 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertTrue( $result['done'] );
 
 		global $wpdb;
-		$domain_row = $wpdb->get_row( "SELECT * FROM " . ALM_Install::domains_table_name() . " WHERE domain = 'smallboutique.example'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$domain_row = $wpdb->get_row( 'SELECT * FROM ' . ALM_Install::domains_table_name() . " WHERE domain = 'smallboutique.example'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertSame( 1, (int) $domain_row['is_shop'] );
 		$this->assertNotNull( $domain_row['checked_at'] );
 
-		$link = $wpdb->get_row( "SELECT status FROM " . ALM_Install::table_name() . " WHERE url = 'https://smallboutique.example/product/necklace'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$link = $wpdb->get_row( 'SELECT status FROM ' . ALM_Install::table_name() . " WHERE url = 'https://smallboutique.example/product/necklace'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $link['status'] );
 	}
 
@@ -111,7 +111,7 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		global $wpdb;
-		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertSame( ALM_Install::STATUS_UNCLASSIFIED, $status );
 	}
 
@@ -122,7 +122,7 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		global $wpdb;
-		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertSame( ALM_Install::STATUS_IGNORED, $status, 'An explicitly ignored link must stay ignored regardless of what the domain check finds.' );
 	}
 
@@ -138,10 +138,10 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		global $wpdb;
-		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $status, 'A failed check must never bury a link back in the noise bucket.' );
 
-		$domain_row = $wpdb->get_row( "SELECT * FROM " . ALM_Install::domains_table_name() . " WHERE domain = 'unreachable.example'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$domain_row = $wpdb->get_row( 'SELECT * FROM ' . ALM_Install::domains_table_name() . " WHERE domain = 'unreachable.example'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertNull( $domain_row['is_shop'] );
 		$this->assertNotNull( $domain_row['checked_at'], 'Still marked as checked, so it does not get retried every single batch.' );
 	}
@@ -170,7 +170,7 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 1, $request_count );
 
 		global $wpdb;
-		$statuses = $wpdb->get_col( "SELECT status FROM " . ALM_Install::table_name() . " WHERE url LIKE 'https://busyshop.example/%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$statuses = $wpdb->get_col( 'SELECT status FROM ' . ALM_Install::table_name() . " WHERE url LIKE 'https://busyshop.example/%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertSame( array( ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_CONVERTIBLE ), $statuses );
 	}
 

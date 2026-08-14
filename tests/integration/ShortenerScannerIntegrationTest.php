@@ -123,7 +123,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$id = $this->insert_link( 'http://bit.ly/abc123' );
 		$this->fake_http_chain(
 			array(
-				'http://bit.ly/abc123' => array(
+				'http://bit.ly/abc123'               => array(
 					'status'   => 301,
 					'location' => 'https://amzn.to/manually-generated',
 				),
@@ -145,7 +145,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$id = $this->insert_link( 'http://bit.ly/plain-product' );
 		$this->fake_http_chain(
 			array(
-				'http://bit.ly/plain-product' => array(
+				'http://bit.ly/plain-product'             => array(
 					'status'   => 301,
 					'location' => 'https://www.zara.com/us/en/product.html',
 				),
@@ -216,7 +216,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 
 		$this->fake_http_chain(
 			array(
-				'http://bit.ly/abc123' => array(
+				'http://bit.ly/abc123'               => array(
 					'status'   => 301,
 					'location' => 'https://amzn.to/manually-generated',
 				),
@@ -259,12 +259,12 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$this->insert_link( 'http://bit.ly/dead' );
 		$this->fake_http_chain(
 			array(
-				'http://bit.ly/tracked' => array(
+				'http://bit.ly/tracked'              => array(
 					'status'   => 301,
 					'location' => 'https://amzn.to/manually-generated',
 				),
 				'https://amzn.to/manually-generated' => array( 'status' => 200 ),
-				'http://bit.ly/dead' => array( 'status' => 404 ),
+				'http://bit.ly/dead'                 => array( 'status' => 404 ),
 			)
 		);
 
@@ -290,7 +290,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$this->insert_link( 'http://bit.ly/two' );
 		$this->fake_http_chain(
 			array(
-				'http://bit.ly/one' => array(
+				'http://bit.ly/one'   => array(
 					'status'   => 301,
 					'location' => 'https://amzn.to/one',
 				),
@@ -331,7 +331,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 					'status'   => 301,
 					'location' => 'https://amzn.to/x',
 				),
-				'https://amzn.to/x' => array( 'status' => 200 ),
+				'https://amzn.to/x'           => array( 'status' => 200 ),
 			)
 		);
 

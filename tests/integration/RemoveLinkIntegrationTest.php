@@ -24,14 +24,14 @@ class RemoveLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 		$wpdb->query( 'TRUNCATE TABLE ' . ALM_Install::table_name() ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, test-only truncate between runs.
 
 		$providers              = new ALM_Provider_Registry();
-		$adapters                = new ALM_Adapter_Registry();
-		$scanner                 = new ALM_Scanner( $adapters, $providers, new ALM_Candidate_Classifier() );
-		$domain_scanner          = new ALM_Domain_Scanner( new ALM_Domain_Checker(), new ALM_Candidate_Classifier() );
-		$converter               = new ALM_Link_Converter( $providers, $adapters );
-		$network_signal_scanner  = new ALM_Network_Signal_Scanner();
-		$shortener_scanner       = new ALM_Shortener_Scanner( new ALM_Shortener_Resolver(), $providers );
-		$thumbnail_fetcher       = new ALM_Thumbnail_Fetcher();
-		$link_health_scanner     = new ALM_Link_Health_Scanner( new ALM_Link_Health_Checker() );
+		$adapters               = new ALM_Adapter_Registry();
+		$scanner                = new ALM_Scanner( $adapters, $providers, new ALM_Candidate_Classifier() );
+		$domain_scanner         = new ALM_Domain_Scanner( new ALM_Domain_Checker(), new ALM_Candidate_Classifier() );
+		$converter              = new ALM_Link_Converter( $providers, $adapters );
+		$network_signal_scanner = new ALM_Network_Signal_Scanner();
+		$shortener_scanner      = new ALM_Shortener_Scanner( new ALM_Shortener_Resolver(), $providers );
+		$thumbnail_fetcher      = new ALM_Thumbnail_Fetcher();
+		$link_health_scanner    = new ALM_Link_Health_Scanner( new ALM_Link_Health_Checker() );
 
 		$admin = new ALM_Admin( $scanner, $providers, $adapters, $domain_scanner, $converter, $network_signal_scanner, $shortener_scanner, $thumbnail_fetcher, $link_health_scanner );
 		$admin->init();

@@ -23,6 +23,7 @@ if ( false !== $_phpunit_polyfills_path ) {
 }
 
 if ( ! file_exists( "{$_tests_dir}/includes/functions.php" ) ) {
+	// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- plain diagnostic text to a CLI terminal, before WordPress itself has even loaded; there's no HTML output context here to escape for.
 	echo "Could not find {$_tests_dir}/includes/functions.php, have you run bin/install-wp-tests.sh ?" . PHP_EOL;
 	exit( 1 );
 }

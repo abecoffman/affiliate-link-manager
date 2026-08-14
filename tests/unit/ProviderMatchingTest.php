@@ -110,12 +110,12 @@ class ProviderMatchingTest extends TestCase {
 	public static function provide_cj_urls() {
 		return array(
 			'anrdoezrs.net (confirmed on honestlywtf)' => array( 'http://www.anrdoezrs.net/links/7581063/type/dlg/https://society6.com/prints', true ),
-			'jdoqocy.com'                               => array( 'https://jdoqocy.com/click-123', true ),
-			'kqzyfj.com'                                => array( 'https://www.kqzyfj.com/click-123', true ),
-			'tkqlhce.com'                                => array( 'https://tkqlhce.com/click-123', true ),
-			'dpbolvw.net'                                => array( 'https://dpbolvw.net/click-123', true ),
-			'lookalike domain'                          => array( 'https://notanrdoezrs.net/click-123', false ),
-			'unrelated retailer'                        => array( 'https://www.zara.com/us/en/product.html', false ),
+			'jdoqocy.com'                              => array( 'https://jdoqocy.com/click-123', true ),
+			'kqzyfj.com'                               => array( 'https://www.kqzyfj.com/click-123', true ),
+			'tkqlhce.com'                              => array( 'https://tkqlhce.com/click-123', true ),
+			'dpbolvw.net'                              => array( 'https://dpbolvw.net/click-123', true ),
+			'lookalike domain'                         => array( 'https://notanrdoezrs.net/click-123', false ),
+			'unrelated retailer'                       => array( 'https://www.zara.com/us/en/product.html', false ),
 		);
 	}
 
@@ -171,8 +171,8 @@ class ProviderMatchingTest extends TestCase {
 
 	public function test_shopmy_wrap_url_builds_the_documented_redirect_format() {
 		Functions\when( 'get_option' )->alias(
-			function ( $name, $default = '' ) {
-				return \ALM_Provider_ShopMy::OPTION_AFFILIATE_ID === $name ? 'sDXyBS' : $default;
+			function ( $name, $default_value = '' ) {
+				return \ALM_Provider_ShopMy::OPTION_AFFILIATE_ID === $name ? 'sDXyBS' : $default_value;
 			}
 		);
 		Functions\when( 'add_query_arg' )->alias(
@@ -190,14 +190,14 @@ class ProviderMatchingTest extends TestCase {
 
 	public function test_shopmy_wrap_url_includes_collection_id_when_set() {
 		Functions\when( 'get_option' )->alias(
-			function ( $name, $default = '' ) {
+			function ( $name, $default_value = '' ) {
 				if ( \ALM_Provider_ShopMy::OPTION_AFFILIATE_ID === $name ) {
 					return 'sDXyBS';
 				}
 				if ( \ALM_Provider_ShopMy::OPTION_COLLECTION_ID === $name ) {
 					return '123';
 				}
-				return $default;
+				return $default_value;
 			}
 		);
 		Functions\when( 'add_query_arg' )->alias(

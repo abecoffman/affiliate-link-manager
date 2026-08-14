@@ -193,7 +193,14 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 
 		$dead_id = $this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
 		global $wpdb;
-		$wpdb->update( ALM_Install::table_name(), array( 'post_id' => $post_id, 'location' => '0' ), array( 'id' => $dead_id ) );
+		$wpdb->update(
+			ALM_Install::table_name(),
+			array(
+				'post_id'  => $post_id,
+				'location' => '0',
+			),
+			array( 'id' => $dead_id )
+		);
 
 		$merely_stale_id = $this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
 

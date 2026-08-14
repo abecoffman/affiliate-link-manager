@@ -4,7 +4,13 @@
 
 	<file>.</file>
 	<exclude-pattern>/vendor/*</exclude-pattern>
-	<exclude-pattern>/tests/*</exclude-pattern>
+	<!-- Test files themselves ARE checked (see tests/unit and
+	     tests/integration's own *Test.php files). Only third-party
+	     code pulled in by tests/integration's isolated Composer
+	     context (a real WP core test library plus PHPUnit 9, not this
+	     project's own code) is excluded, same reasoning as the root
+	     /vendor/* exclusion above. -->
+	<exclude-pattern>/tests/integration/vendor/*</exclude-pattern>
 	<exclude-pattern>/languages/*</exclude-pattern>
 
 	<arg value="sp"/>
@@ -15,6 +21,24 @@
 		<!-- Files intentionally use tabs for indentation, matching the
 		     sibling webp-generator codebase's style; the ruleset's default
 		     already expects that, no override needed. -->
+	</rule>
+
+	<!-- Test files follow the PHPUnit ecosystem's own naming convention
+	     (FooTest.php matching class FooTest), which is what tests/'s
+	     PSR-4 autoloading in composer.json already expects, not WP
+	     core's class-foo.php convention, which doesn't apply to
+	     non-WP-loaded, Composer-autoloaded test code. -->
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>/tests/*</exclude-pattern>
+	</rule>
+
+	<!-- A test file legitimately declaring a small stub/test-double
+	     class alongside the *Test class that uses it (e.g. a fake
+	     scanner dependency) is a normal, deliberate PHPUnit authoring
+	     pattern, not the kind of accidental multi-class sprawl this
+	     sniff exists to catch in the plugin's own real code. -->
+	<rule ref="Generic.Files.OneObjectStructurePerFile">
+		<exclude-pattern>/tests/*</exclude-pattern>
 	</rule>
 
 	<rule ref="WordPress.WP.I18n">

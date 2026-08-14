@@ -31,7 +31,7 @@ class CandidateClassifierTest extends TestCase {
 
 	public static function provide_candidate_urls() {
 		return array(
-			'a real, unrecognized retailer'    => array( 'https://www.zara.com/us/en/product.html', true ),
+			'a real, unrecognized retailer'     => array( 'https://www.zara.com/us/en/product.html', true ),
 			'etsy'                              => array( 'https://www.etsy.com/listing/12345', true ),
 			'internal link, same host'          => array( 'https://honestlywtf.com/category/diy', false ),
 			'internal link, www subdomain'      => array( 'https://www.honestlywtf.com/category/diy', false ),
@@ -45,7 +45,7 @@ class CandidateClassifierTest extends TestCase {
 			'a tumblr blog'                     => array( 'https://someblog.tumblr.com/post/123', false ),
 			'a video platform'                  => array( 'https://vimeo.com/12345678', false ),
 			'imdb'                              => array( 'https://www.imdb.com/title/tt0111161/', false ),
-			'ride-sharing, never a shop'         => array( 'https://www.uber.com/global/en/price-estimate/', false ),
+			'ride-sharing, never a shop'        => array( 'https://www.uber.com/global/en/price-estimate/', false ),
 			'instagram short domain'            => array( 'https://instagr.am/p/abc123', false ),
 			'twitter short domain'              => array( 'https://t.co/abc123', false ),
 			// A real affiliate-network redirect domain (Commission

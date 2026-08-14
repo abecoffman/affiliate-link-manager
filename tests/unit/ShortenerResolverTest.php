@@ -96,8 +96,8 @@ class ShortenerResolverTest extends TestCase {
 		Functions\when( 'wp_safe_remote_head' )->alias(
 			function ( $url ) {
 				$chain = array(
-					'http://etsy.me/1R6cI8v'  => array( 301, 'https://etsy.me/1R6cI8v' ),
-					'https://etsy.me/1R6cI8v' => array( 301, 'http://www.etsy.com/search?q=vintage' ),
+					'http://etsy.me/1R6cI8v'               => array( 301, 'https://etsy.me/1R6cI8v' ),
+					'https://etsy.me/1R6cI8v'              => array( 301, 'http://www.etsy.com/search?q=vintage' ),
 					'http://www.etsy.com/search?q=vintage' => array( 301, 'https://www.etsy.com/search?q=vintage' ),
 				);
 				if ( isset( $chain[ $url ] ) ) {

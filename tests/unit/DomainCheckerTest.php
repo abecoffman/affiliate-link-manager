@@ -109,7 +109,7 @@ class DomainCheckerTest extends TestCase {
 
 	public static function provide_shop_platform_html() {
 		return array(
-			'shopify cdn'    => array( '<script src="https://cdn.shopify.com/s/files/1/theme.js"></script>' ),
+			'shopify cdn'    => array( '<script src="https://cdn.shopify.com/s/files/1/theme.js"></script>' ), // phpcs:ignore WordPress.WP.EnqueuedResources.NonEnqueuedScript -- fixture HTML string for the checker to parse, not a real enqueued script.
 			'myshopify host' => array( '<link rel="canonical" href="https://smallboutique.myshopify.com/products/necklace">' ),
 			'woocommerce'    => array( '<body class="woocommerce single-product"><div class="woocommerce-product-gallery"></div></body>' ),
 		);
@@ -150,8 +150,8 @@ class DomainCheckerTest extends TestCase {
 
 	public static function provide_non_success_statuses() {
 		return array(
-			'404 not found'      => array( 404 ),
-			'500 server error'   => array( 500 ),
+			'404 not found'    => array( 404 ),
+			'500 server error' => array( 500 ),
 			'301 (redirect loop exhausted, still a redirect at the end)' => array( 301 ),
 		);
 	}

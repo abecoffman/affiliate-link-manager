@@ -69,7 +69,7 @@ class LinkHealthCheckerTest extends TestCase {
 		return array(
 			'403 forbidden (bot-blocked, not gone)' => array( 403 ),
 			'500 server error'                      => array( 500 ),
-			'503 service unavailable'                => array( 503 ),
+			'503 service unavailable'               => array( 503 ),
 		);
 	}
 

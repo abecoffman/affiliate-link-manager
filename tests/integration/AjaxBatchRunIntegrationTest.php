@@ -39,7 +39,7 @@ class AjaxBatchRunIntegrationTest extends WP_Ajax_UnitTestCase {
 		$adapters               = new ALM_Adapter_Registry();
 		$scanner                = new ALM_Scanner( $adapters, $providers, new ALM_Candidate_Classifier() );
 		$domain_scanner         = new ALM_Domain_Scanner( new ALM_Domain_Checker(), new ALM_Candidate_Classifier() );
-		$converter               = new ALM_Link_Converter( $providers, $adapters );
+		$converter              = new ALM_Link_Converter( $providers, $adapters );
 		$network_signal_scanner = new ALM_Network_Signal_Scanner();
 		$shortener_scanner      = new ALM_Shortener_Scanner( new ALM_Shortener_Resolver(), $providers );
 		$thumbnail_fetcher      = new ALM_Thumbnail_Fetcher();
@@ -137,6 +137,7 @@ class AjaxBatchRunIntegrationTest extends WP_Ajax_UnitTestCase {
 			$this->fail( 'Expected wp_die() to interrupt execution, same as a real AJAX response.' );
 		} catch ( WPAjaxDieContinueException $e ) {
 			// Expected -- wp_send_json_success() always ends this way.
+			unset( $e );
 		}
 
 		$response = json_decode( $this->_last_response, true );

@@ -174,7 +174,7 @@ class HtmlFragmentTest extends TestCase {
 
 		$context = $subject->context( $html, 0 );
 
-		$this->assertSame( "If you are in town between April 18-20, come hang with us all weekend at Birkenstock’s", $context['before'] );
+		$this->assertSame( 'If you are in town between April 18-20, come hang with us all weekend at Birkenstock’s', $context['before'] );
 		$this->assertSame( 'Newbury', $context['text'] );
 		$this->assertSame( 'and Chestnut Hill locations and get hands-on.', $context['after'] );
 	}
@@ -188,7 +188,7 @@ class HtmlFragmentTest extends TestCase {
 	 */
 	public function test_get_anchor_context_preserves_other_inline_markup_and_forces_links_to_a_new_tab() {
 		$subject = new HtmlFragmentTestSubject();
-		$html = '<p>As seen in <a href="https://vogue.example.com/">Vogue</a>, our <strong>new collection</strong> features the '
+		$html    = '<p>As seen in <a href="https://vogue.example.com/">Vogue</a>, our <strong>new collection</strong> features the '
 			. '<a href="https://a.example.com/">Birkenstocks</a> everyone is talking about.</p>';
 
 		$context = $subject->context( $html, 1 );
