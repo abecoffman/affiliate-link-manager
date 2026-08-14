@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.19.0
+ * Version:     1.19.1
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.19.0' );
+define( 'ALM_VERSION', '1.19.1' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -62,6 +62,7 @@ register_deactivation_hook( __FILE__, 'alm_unschedule_domain_recheck_cron' );
  */
 function alm_unschedule_domain_recheck_cron() {
 	wp_clear_scheduled_hook( 'alm_domain_recheck_cron' );
+	wp_clear_scheduled_hook( 'alm_watchdog_cron' );
 
 	// Also clear any pending self-rescheduled continuation tick left
 	// over from an in-flight background run for any of the four tasks
@@ -113,10 +114,43 @@ add_action( 'alm_domain_recheck_cron', 'alm_run_domain_recheck_cron' );
  * some other path) -- this function only ever continues a run that
  * was already explicitly started, never starts one on its own.
  *
+ * Real, live-diagnosed failure mode this guards against: a single
+ * health/domain check can legitimately take up to ~40s (5 redirect
+ * hops x an 8s timeout each -- WP core's own Requests library gives
+ * each hop a fresh timeout budget, not one shared ceiling for the
+ * whole chain, confirmed by reading wp-includes/Requests/src/Requests.php
+ * directly), and ALM_Link_Health_Checker/ALM_Shortener_Resolver each
+ * do a real second attempt before trusting a "looks dead" result --
+ * worst case ~82s for one single item. A shared-hosting php.ini's
+ * generic max_execution_time (30s is common, confirmed on this exact
+ * host) turns that into an uncatchable PHP fatal mid-batch -- not a
+ * WP_Error, not a Throwable, nothing try/catch can intercept. Found
+ * live: both this plugin's real Check Domains and Check Link Health
+ * runs on honestlywtf were stuck for a full day this way, with
+ * wp_next_scheduled() showing nothing scheduled despite still being
+ * marked active, because the fatal happened after acquire_lock() but
+ * before the old code ever reached its own schedule_next_tick() call.
+ *
+ * Two changes directly answer that: set_time_limit() below removes
+ * the actual trigger (this cron-driven path has no live user waiting
+ * on it, so a generous budget costs nothing); scheduling the next
+ * tick *before* running the risky batch (not after) means even some
+ * future, different failure mode can't strand the chain the same way
+ * -- the next tick already exists in WP-Cron's own table by the time
+ * anything risky runs. See also alm_watchdog_reprime_stuck_tasks()
+ * below, the third layer for whatever these two still miss.
+ *
  * @param string $task_id One of ALM_Background_Runner::TASK_BATCH_SIZES's keys.
  * @return void
  */
 function alm_continue_batch_run( $task_id ) {
+	// Nobody is watching a WP-Cron request in real time -- generous on
+	// purpose, comfortably above the ~82s real worst case above, well
+	// clear of a shared host's default (often 30s, the actual trigger
+	// found live). Not literally unbounded: still a real, finite guard
+	// against a truly runaway/unexpected hang.
+	set_time_limit( 240 ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_set_time_limit -- deliberate, see the docblock above for the real failure this fixes.
+
 	$state = ALM_Background_Runner::get_state( $task_id );
 
 	if ( ! $state['active'] || $state['stalled'] ) {
@@ -134,6 +168,14 @@ function alm_continue_batch_run( $task_id ) {
 		ALM_Background_Runner::schedule_next_tick( $task_id, $delay );
 		return;
 	}
+
+	// Scheduled *before* the risky batch dispatch below, not after --
+	// see the docblock above. The $done/stalled branches below cancel
+	// this again via unschedule() once there's nothing left to
+	// continue; the normal "still going" path at the very end
+	// deliberately does NOT schedule again itself, since this call
+	// already covers it.
+	ALM_Background_Runner::schedule_next_tick( $task_id, $delay );
 
 	$batch_size = isset( ALM_Background_Runner::TASK_BATCH_SIZES[ $task_id ] )
 		? ALM_Background_Runner::TASK_BATCH_SIZES[ $task_id ]
@@ -177,8 +219,11 @@ function alm_continue_batch_run( $task_id ) {
 			break;
 
 		default:
-			// Not one of the four real tasks -- nothing to run.
+			// Not one of the four real tasks -- nothing to run. Cancels
+			// the tick just pre-scheduled above too, since this task_id
+			// will never legitimately do anything with it.
 			ALM_Background_Runner::release_lock( $task_id );
+			ALM_Background_Runner::unschedule( $task_id );
 			return;
 	}
 
@@ -200,18 +245,56 @@ function alm_continue_batch_run( $task_id ) {
 		// A real defensive cap, not expected to ever bind in normal
 		// use -- surfaces as a stalled run on the Dashboard rather
 		// than silently rescheduling itself forever on some future
-		// stuck-batch bug.
+		// stuck-batch bug. Cancels the tick pre-scheduled above too --
+		// unlike before this round, something really is scheduled at
+		// this point, and a stalled run has nothing left to continue.
 		$state['stalled'] = true;
 		ALM_Background_Runner::save_state( $task_id, $state );
 		ALM_Background_Runner::release_lock( $task_id );
+		ALM_Background_Runner::unschedule( $task_id );
 		return;
 	}
 
+	// Still going, and already has its next tick scheduled (see above,
+	// before the batch dispatch) -- nothing left to do here but save.
 	ALM_Background_Runner::save_state( $task_id, $state );
 	ALM_Background_Runner::release_lock( $task_id );
-	ALM_Background_Runner::schedule_next_tick( $task_id, $delay );
 }
 add_action( ALM_Background_Runner::CONTINUE_HOOK, 'alm_continue_batch_run' );
+
+/**
+ * Third layer of defense for a run getting stranded (see
+ * alm_continue_batch_run()'s own docblock for the first two: a
+ * generous set_time_limit(), and scheduling the next tick before the
+ * risky part runs). Cheap on purpose -- no real work, no outbound
+ * HTTP, just option/wp_next_scheduled() reads -- so it can safely run
+ * far more often than the once-daily housekeeping cron: any task left
+ * `active` with nothing actually scheduled to continue it (found live
+ * on honestlywtf, see alm_continue_batch_run()'s docblock) gets a
+ * fresh tick re-primed, bounding the worst-case stuck window to about
+ * an hour instead of indefinitely. Deliberately does not touch a
+ * `stalled` run (see ALM_Background_Runner::MAX_RESCHEDULES) -- that
+ * state means the run itself needs a human's attention, not another
+ * silent auto-retry.
+ *
+ * @return void
+ */
+function alm_watchdog_reprime_stuck_tasks() {
+	foreach ( array_keys( ALM_Background_Runner::TASK_BATCH_SIZES ) as $task_id ) {
+		$state = ALM_Background_Runner::get_state( $task_id );
+
+		if ( ! $state['active'] || $state['stalled'] ) {
+			continue;
+		}
+
+		if ( wp_next_scheduled( ALM_Background_Runner::CONTINUE_HOOK, array( $task_id ) ) ) {
+			continue;
+		}
+
+		ALM_Background_Runner::schedule_next_tick( $task_id, 5 );
+	}
+}
+add_action( 'alm_watchdog_cron', 'alm_watchdog_reprime_stuck_tasks' );
 
 /**
  * Boot the plugin.

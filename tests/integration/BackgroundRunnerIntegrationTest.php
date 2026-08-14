@@ -215,6 +215,120 @@ class BackgroundRunnerIntegrationTest extends WP_UnitTestCase {
 		$this->assertFalse( (bool) wp_next_scheduled( 'alm_continue_batch_run', array( 'link_health' ) ), 'Must stop rescheduling once stalled -- that is the entire point of the cap.' );
 	}
 
+	/**
+	 * The real, live-diagnosed bug this round fixes: a batch call that
+	 * blows up partway through must not strand the run with nothing
+	 * left to continue it. A genuine uncatchable PHP fatal (the real
+	 * failure found live -- max_execution_time exceeded) can't be
+	 * reproduced inside a PHPUnit process without killing the test
+	 * runner itself; throwing a real exception from inside the fake
+	 * pre_http_request response is the closest faithful proxy available
+	 * -- it authentically propagates up through wp_remote_get() and the
+	 * scanner's own check_batch(), same call path a real fatal would
+	 * blow through, and directly proves the ordering fix (schedule
+	 * *before* the risky call, not after) actually took effect rather
+	 * than just asserting it by reading the source.
+	 */
+	public function test_a_tick_that_blows_up_mid_batch_still_leaves_a_continuation_scheduled() {
+		$this->insert_link( 'https://blows-up.example.com/product' );
+
+		add_filter(
+			'pre_http_request',
+			function () {
+				throw new \Exception( 'simulated mid-batch failure' );
+			}
+		);
+
+		ALM_Background_Runner::save_state(
+			'link_health',
+			array(
+				'active'           => true,
+				'cursor'           => 0,
+				'processed'        => 0,
+				'started_at'       => current_time( 'mysql' ),
+				'reschedule_count' => 0,
+				'stalled'          => false,
+			)
+		);
+
+		try {
+			alm_continue_batch_run( 'link_health' );
+			$this->fail( 'Expected the simulated failure to propagate, same as a real fatal would abort this function.' );
+		} catch ( \Exception $e ) {
+			$this->assertSame( 'simulated mid-batch failure', $e->getMessage() );
+		}
+
+		$this->assertNotFalse(
+			wp_next_scheduled( 'alm_continue_batch_run', array( 'link_health' ) ),
+			'The next tick must already have been scheduled before the risky call ran -- otherwise this exact failure (found live on honestlywtf) strands the run with nothing left to continue it.'
+		);
+	}
+
+	public function test_watchdog_reprimes_an_active_task_with_nothing_scheduled() {
+		ALM_Background_Runner::save_state(
+			'domains',
+			array(
+				'active'           => true,
+				'cursor'           => 0,
+				'processed'        => 42,
+				'started_at'       => current_time( 'mysql' ),
+				'reschedule_count' => 3,
+				'stalled'          => false,
+			)
+		);
+		$this->assertFalse( (bool) wp_next_scheduled( 'alm_continue_batch_run', array( 'domains' ) ), 'Sanity check: genuinely nothing scheduled yet, same as the real stuck state found live.' );
+
+		alm_watchdog_reprime_stuck_tasks();
+
+		$this->assertNotFalse( wp_next_scheduled( 'alm_continue_batch_run', array( 'domains' ) ), 'Must re-prime a stranded run.' );
+	}
+
+	public function test_watchdog_does_not_duplicate_an_already_scheduled_tick() {
+		ALM_Background_Runner::save_state(
+			'shorteners',
+			array(
+				'active'           => true,
+				'cursor'           => 0,
+				'processed'        => 1,
+				'started_at'       => current_time( 'mysql' ),
+				'reschedule_count' => 1,
+				'stalled'          => false,
+			)
+		);
+		ALM_Background_Runner::schedule_next_tick( 'shorteners', 30 );
+		$already_scheduled_for = wp_next_scheduled( 'alm_continue_batch_run', array( 'shorteners' ) );
+
+		alm_watchdog_reprime_stuck_tasks();
+
+		$this->assertSame( $already_scheduled_for, wp_next_scheduled( 'alm_continue_batch_run', array( 'shorteners' ) ), 'A real, already-pending tick must be left exactly as it is -- no duplicate/earlier one alongside it.' );
+	}
+
+	public function test_watchdog_leaves_inactive_and_stalled_tasks_alone() {
+		// Never started -- the watchdog only ever continues a run that
+		// was already explicitly started, same rule alm_continue_batch_run()
+		// itself follows.
+		alm_watchdog_reprime_stuck_tasks();
+		$this->assertFalse( (bool) wp_next_scheduled( 'alm_continue_batch_run', array( 'scan' ) ) );
+
+		// Stalled -- a real defensive cap that already fired means this
+		// run needs a human, not another silent auto-retry.
+		ALM_Background_Runner::save_state(
+			'link_health',
+			array(
+				'active'           => true,
+				'cursor'           => 0,
+				'processed'        => 999,
+				'started_at'       => current_time( 'mysql' ),
+				'reschedule_count' => ALM_Background_Runner::MAX_RESCHEDULES,
+				'stalled'          => true,
+			)
+		);
+
+		alm_watchdog_reprime_stuck_tasks();
+
+		$this->assertFalse( (bool) wp_next_scheduled( 'alm_continue_batch_run', array( 'link_health' ) ), 'A stalled run must not be silently re-primed.' );
+	}
+
 	public function test_scan_task_persists_and_advances_its_offset_cursor() {
 		// Batch size for scan is 20 -- 22 posts means the first tick
 		// can't finish in one call, unlike the DB-state-driven tasks

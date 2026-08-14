@@ -273,6 +273,14 @@ class ALM_Admin {
 	}
 
 	public function handle_scan_batch() {
+		// See handle_domain_check_batch()'s own comment for why this is
+		// here on all four handlers -- a live-diagnosed real fatal, not
+		// theoretical. Lower than alm_continue_batch_run()'s own 240s
+		// (see that function's docblock): a real browser tab is actively
+		// waiting on this one, not a background WP-Cron tick nobody's
+		// watching.
+		set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_set_time_limit -- deliberate, see comment above.
+
 		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
 
 		if ( ! current_user_can( self::CAPABILITY ) ) {
@@ -297,6 +305,20 @@ class ALM_Admin {
 	}
 
 	public function handle_domain_check_batch() {
+		// Real, live-diagnosed failure this guards against: a single
+		// check can legitimately take up to ~40s (redirect chains, each
+		// hop getting its own fresh timeout -- see
+		// alm_continue_batch_run()'s own docblock in the main plugin
+		// file for the full investigation), which can exceed a shared
+		// host's default max_execution_time (30s is common) and produce
+		// an uncatchable PHP fatal mid-batch. Lower than
+		// alm_continue_batch_run()'s own 240s deliberately -- a real
+		// browser tab is actively waiting here, not a background WP-Cron
+		// tick nobody's watching; the existing JS .catch() already
+		// degrades this reasonably (shows an error, re-enables the
+		// button) if this budget is somehow still hit.
+		set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_set_time_limit -- deliberate, see comment above.
+
 		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
 
 		if ( ! current_user_can( self::CAPABILITY ) ) {
@@ -319,6 +341,9 @@ class ALM_Admin {
 	}
 
 	public function handle_expand_shorteners_batch() {
+		// See handle_domain_check_batch()'s own comment for why.
+		set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_set_time_limit -- deliberate, see comment above.
+
 		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
 
 		if ( ! current_user_can( self::CAPABILITY ) ) {
@@ -336,6 +361,12 @@ class ALM_Admin {
 	}
 
 	public function handle_check_link_health_batch() {
+		// See handle_domain_check_batch()'s own comment for why. Worst
+		// case here is the highest of all four, since
+		// ALM_Link_Health_Checker does a real second attempt before
+		// trusting a "looks dead" result.
+		set_time_limit( 120 ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_set_time_limit -- deliberate, see comment above.
+
 		check_ajax_referer( self::NONCE_ACTION, 'nonce' );
 
 		if ( ! current_user_can( self::CAPABILITY ) ) {

@@ -82,6 +82,19 @@ class ALM_Install {
 		if ( ! wp_next_scheduled( 'alm_domain_recheck_cron' ) ) {
 			wp_schedule_event( time(), 'daily', 'alm_domain_recheck_cron' );
 		}
+
+		// Hourly, not daily like the housekeeping cron above -- this one
+		// does no real work of its own (see
+		// alm_watchdog_reprime_stuck_tasks()'s own docblock), just checks
+		// whether any of the four background tasks got stranded (found
+		// live: a real, uncatchable PHP execution-time fatal mid-batch
+		// can silently break alm_continue_batch_run()'s own self-
+		// rescheduling chain -- see its docblock for the full story), so
+		// running it often costs nothing and bounds the worst-case stuck
+		// window to about an hour instead of up to a day.
+		if ( ! wp_next_scheduled( 'alm_watchdog_cron' ) ) {
+			wp_schedule_event( time(), 'hourly', 'alm_watchdog_cron' );
+		}
 	}
 
 	/**
@@ -241,6 +254,7 @@ class ALM_Install {
 		delete_option( 'alm_link_health_run_state' );
 
 		wp_clear_scheduled_hook( 'alm_domain_recheck_cron' );
+		wp_clear_scheduled_hook( 'alm_watchdog_cron' );
 		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'scan' ) );
 		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'domains' ) );
 		wp_clear_scheduled_hook( 'alm_continue_batch_run', array( 'shorteners' ) );
