@@ -1,0 +1,175 @@
+# Changelog
+
+All notable changes to this project are documented here. Reconstructed
+from git history up through 1.20.0; entries from that point on are
+written as the change ships.
+
+## [Unreleased]
+
+Addressing findings from a TL-style code review of the whole plugin:
+
+- Hardened `ALM_Domain_Checker`, `ALM_Link_Health_Checker`, and
+  `ALM_Thumbnail_Fetcher` against SSRF by switching them to
+  `wp_safe_remote_get()`, matching `ALM_Shortener_Resolver`'s existing
+  practice. Confirmed live: a real public URL still succeeds, a loopback
+  address and the AWS metadata-service IP are now correctly rejected.
+- Fixed a latent execution-time risk in the daily
+  `alm_run_domain_recheck_cron()`: it had no `set_time_limit()` override
+  and used larger, hardcoded batch sizes than the vetted
+  `ALM_Background_Runner::TASK_BATCH_SIZES` values the AJAX/continuation
+  path already uses. Now shares the same source of truth and the same
+  240s ceiling.
+- Removed an orphaned `alm_auto_convert_unclassified` option cleanup and
+  marked the unused `last_verified` schema column as vestigial.
+- Extended phpcs coverage to test files (previously excluded wholesale).
+- Added `README.md` and this changelog.
+
+## [1.20.0] - 2026-08-13
+
+Rethought the Stale/Dead information architecture and the index-vs-post
+action vocabulary. "Stale" (merely not-rediscovered) stopped being a
+user-facing concept entirely -- no tab, no badge, no tile -- since it
+can never resolve into anything else on its own. Only genuinely
+confirmed-dead links are shown, as "Dead Links." Bulk actions gained
+real `<optgroup>` grouping distinguishing "edits your post content"
+from "tracking only." Added automatic incremental scanning (posts
+modified since the last check, picked up by the hourly watchdog with
+zero user action) and quiet background cleanup of long-unresolved
+tracking rows.
+
+## [1.19.1] - 2026-08-13
+
+Fixed a silent freeze in background task continuation: an uncatchable
+PHP fatal between acquiring the batch lock and scheduling the next tick
+could permanently break the self-rescheduling chain. Reordered so the
+next tick is scheduled immediately after the lock is acquired, before
+any risky work runs.
+
+## [1.19.0] - 2026-08-12
+
+Removed the Dead-tab shortcut notice in favor of standard WordPress
+Bulk Actions.
+
+## [1.18.2] - 2026-08-12
+
+Rebuilt the Dead-tab notice as a real WP admin notice.
+
+## [1.18.1] - 2026-08-12
+
+Fixed a confusing mismatch between the dead-links banner count and the
+tab's own total.
+
+## [1.18.0] - 2026-08-12
+
+Background tasks (Scan, Check Domains, Expand Shortened Links, Check
+Link Health) now survive navigating away from the Dashboard -- a run
+started via AJAX keeps making progress through WP-Cron even after the
+browser tab that started it closes.
+
+## [1.17.1] - 2026-08-12
+
+Renamed the "Check Candidate Links" task to "Check Link Health" for
+internal naming consistency.
+
+## [1.17.0] - 2026-08-12
+
+Added a discoverable "Dead" filter, disambiguated from plain "Stale."
+
+## [1.16.0] - 2026-08-11
+
+Added the ability to remove dead links directly from posts.
+
+## [1.15.0] - 2026-08-11
+
+Added candidate link-health checking: dead links now move out of the
+opportunities list instead of sitting there unusable.
+
+## [1.14.2] - 2026-08-11
+
+Fixed the thumbnail fetcher's redirect limit -- RewardStyle links need
+more than 3 hops.
+
+## [1.14.1] - 2026-08-11
+
+Edit modal redesign, plus product thumbnails.
+
+## [1.13.0] - 2026-08-10
+
+Dashboard redesign: one Tasks table instead of a grab-bag of separate
+buttons.
+
+## [1.12.0] - 2026-08-10
+
+IA/UX pass: merged Providers into Settings, tightened the Dashboard,
+added an empty state on the Links screen.
+
+## [1.11.0] - 2026-08-10
+
+Added shortened-link expansion (bit.ly, etsy.me, and similar) to their
+real destination.
+
+## [1.10.0] - 2026-08-10
+
+Added Amazon/CJ/Rakuten/ShopStyle providers, plus a standing
+unrecognized-network detector.
+
+## [1.9.0] - 2026-08-10
+
+Moved View/Ignore/Delete off row actions and into the Edit modal.
+
+## [1.8.0] - 2026-08-10
+
+Redesigned the Links table (Post/Link/Affiliate/URL columns) and
+removed the separate Posts screen.
+
+## [1.7.0] - 2026-08-10
+
+Added Edit/Convert UX: turn a Candidate into a real tracked affiliate
+link.
+
+## [1.6.1] - 2026-08-10
+
+Removed the Affiliate Links column from the native Posts list
+(`edit.php`).
+
+## [1.6.0] - 2026-08-10
+
+Restructured around three tiers: Affiliate Links / Candidate Affiliate
+Links / Other Outbound Links.
+
+## [1.5.0] - 2026-08-09
+
+Added domain content-checking (`ALM_Domain_Checker`/`ALM_Domain_Scanner`)
+to stop guessing shop status from the domain name and start verifying
+it against real page content.
+
+## [1.4.0] - 2026-08-09
+
+Expanded the candidate classifier's default noise list with real
+editorial/media publishers.
+
+## [1.3.4] - 2026-08-08
+
+Design/UX review: fixed real layout, responsive, and markup bugs.
+
+## [1.3.0] - 2026-08-08
+
+Split "unclassified" into real candidates vs. noise
+(`ALM_Candidate_Classifier`).
+
+## [1.2.0] - 2026-08-08
+
+Added a Posts rollup screen (Admin IA Phase A).
+
+## [1.1.0] - 2026-08-08
+
+Rebuilt the Links screen on `WP_List_Table` (Admin IA Phase A).
+
+## [1.0.1] - 2026-08-08
+
+Fixed the Links table breaking out of its card, found via real browser
+testing.
+
+## [1.0.0] - 2026-08-08
+
+Initial version: Affiliate Link Manager foundation.
