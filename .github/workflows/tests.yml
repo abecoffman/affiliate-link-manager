@@ -33,3 +33,40 @@ jobs:
           coverage: none
       - run: composer install --no-progress
       - run: composer run test
+
+  integration:
+    name: Integration tests (real WordPress)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: true
+          MYSQL_DATABASE: wordpress_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          # 7.4, not the 8.3 used for the phpcs/unit jobs above -- this
+          # is the version tests/integration/composer.json's own
+          # isolated context (PHPUnit 9.6, pinned for real WordPress
+          # core test library compatibility) already targets, and this
+          # plugin's own supported floor. See that composer.json's
+          # description for why the two contexts are pinned separately.
+          php-version: '7.4'
+          coverage: none
+          tools: composer
+      # subversion is needed by bin/install-wp-tests.sh to pull the
+      # WordPress core test library; not guaranteed present on every
+      # runner image.
+      - run: sudo apt-get update && sudo apt-get install -y subversion
+      - run: composer install --no-progress
+      - run: bash bin/install-wp-tests.sh wordpress_test root '' 127.0.0.1 latest
+      - run: composer run test:integration
