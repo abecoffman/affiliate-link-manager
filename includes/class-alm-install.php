@@ -176,6 +176,16 @@ class ALM_Install {
 		// row is reclassified to anything else -- see their own
 		// docblocks. Lets ALM_Links_List_Table's "Dead" tab show only
 		// links actually worth removing, not every stale row.
+		//
+		// last_verified below is vestigial: predates health_checked_at/
+		// dead_confirmed_at, which are what the health-check flow
+		// actually reads/writes today (see ALM_Link_Health_Scanner).
+		// Never read or written anywhere in this codebase. Left in
+		// place rather than dropped via a migration for a column
+		// nobody's using -- candidate for removal in a future schema-
+		// touching round. (Deliberately not a SQL comment inline below
+		// -- dbDelta() parses this string with its own regex and isn't
+		// guaranteed to tolerate one.)
 		$sql = "CREATE TABLE {$table_name} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			post_id BIGINT UNSIGNED NOT NULL,
@@ -250,7 +260,6 @@ class ALM_Install {
 		delete_option( 'alm_last_scan_time' );
 		delete_option( 'alm_scan_started_at' );
 		delete_option( 'alm_last_scan_delta' );
-		delete_option( 'alm_auto_convert_unclassified' );
 		delete_option( 'alm_candidate_excluded_domains' );
 		delete_option( 'alm_domain_check_started_at' );
 		delete_option( 'alm_last_domain_check_time' );
