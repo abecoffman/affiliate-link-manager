@@ -4,6 +4,23 @@ All notable changes to this project are documented here. Reconstructed
 from git history up through 1.20.0; entries from that point on are
 written as the change ships.
 
+## [1.22.1] - 2026-08-15
+
+Follow-up TL-style cleanup pass on the 1.22.0 category/modifier refactor
+-- no behavior change, all internal consistency:
+
+- Removed 6 dead, redundant `phpcs:ignore` comment lines left over in
+  `ALM_Install::migrate_status_to_category()` from an earlier draft.
+- Renamed `ALM_Dashboard_Data::get_category_summary()` (was
+  `get_status_summary()`) and its `$category_summary` variable
+  throughout, so the name matches what it actually summarizes now.
+- Corrected several docblocks that still described *current* behavior
+  in the retired `status=x` vocabulary (network-signal scanner,
+  dashboard data, the Edit modal's Remove-from-Post gating, the
+  `ALM_Link_Converter` class docblock) to `category=x`/`modifier=x`.
+  Left references that are deliberately historical (documenting a past
+  bug or the old tile's old behavior) as-is.
+
 ## [1.22.0] - 2026-08-14
 
 Collapsed the `status` column (`active`/`convertible`/`unclassified`/

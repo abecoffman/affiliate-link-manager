@@ -14,10 +14,10 @@
  *   chosen explicitly (only ever a can_wrap()-capable, configured one,
  *   see ALM_Links_List_Table::get_bulk_actions()) and wrap_url() builds
  *   a new tracked URL from whatever's already there.
- * - remove() -- "Remove from Post", for a confirmed-dead (status=stale)
- *   link. Unlike the two above, this doesn't rewrite the row -- it
- *   deletes it, since once the link is unwrapped out of the post
- *   there's nothing left to track.
+ * - remove() -- "Remove from Post", for a confirmed-dead
+ *   (category=nonaffiliate, modifier=dead) link. Unlike the two above,
+ *   this doesn't rewrite the row -- it deletes it, since once the link
+ *   is unwrapped out of the post there's nothing left to track.
  *
  * save_url()/convert() funnel through the same private
  * write_and_persist() so they can never drift on what "save" actually

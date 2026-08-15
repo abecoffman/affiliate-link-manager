@@ -283,22 +283,16 @@ class ALM_Install {
 		// literals describing a schema that will never change again,
 		// not user input.
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = NULL, classified_at = first_seen WHERE status = 'active'", self::CATEGORY_AFFILIATE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = NULL, classified_at = first_seen WHERE status = 'convertible'", self::CATEGORY_CANDIDATE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = NULL, classified_at = first_seen WHERE status = 'unclassified'", self::CATEGORY_NONAFFILIATE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = %s, classified_at = dismissed_at WHERE status = 'ignored'", self::CATEGORY_NONAFFILIATE, self::MODIFIER_IGNORED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = %s, classified_at = dead_confirmed_at WHERE status = 'stale' AND dead_confirmed_at IS NOT NULL", self::CATEGORY_NONAFFILIATE, self::MODIFIER_DEAD ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = %s, classified_at = last_seen WHERE status = 'stale' AND dead_confirmed_at IS NULL", self::CATEGORY_NONAFFILIATE, self::MODIFIER_STALE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
 
 		// dbDelta() never drops columns -- these need a real ALTER. Built

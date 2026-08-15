@@ -94,15 +94,15 @@ class ALM_Network_Signal_Scanner {
 		global $wpdb;
 		$table = ALM_Install::table_name();
 
-		// provider = 'unclassified', not status -- this is about "no
+		// provider = 'unclassified', not category -- this is about "no
 		// real network recognized this URL yet" (what a new
 		// ALM_Provider would fix), independent of whether
 		// ALM_Candidate_Classifier separately decided the link looks
-		// like noise (status=unclassified) or a real opportunity
-		// (status=convertible). Confirmed against real data: the CJ/
+		// like noise (category=nonaffiliate) or a real opportunity
+		// (category=candidate). Confirmed against real data: the CJ/
 		// Rakuten/ShopStyle links this scanner is modeled on were
-		// almost all status=convertible already, not noise -- filtering
-		// on status here would have missed the exact case this exists
+		// almost all category=candidate already, not noise -- filtering
+		// on category here would have missed the exact case this exists
 		// to catch.
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; cached for an hour, not run per-request.
 		$urls = $wpdb->get_col( "SELECT url FROM {$table} WHERE provider = 'unclassified'" );

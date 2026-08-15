@@ -15,7 +15,7 @@
  * @package ALM
  *
  * @var array<string,array{label:string,count:int}> $stats
- * @var array<string,int>                            $status_summary
+ * @var array<string,int>                            $category_summary
  * @var int                                           $dead_count
  * @var array<string,array{label:string,count:int,sample_url:string}> $network_signals
  * @var array<int,array{id:string,label:string,description:string,last_run:string,pending:int|null,button_id:string,progress_id:string,button_label:string,primary:bool,running:bool,processed_so_far:int,stalled:bool}> $tasks
@@ -47,11 +47,11 @@ $alm_links_url = static function ( $args = array() ) {
 
 		<div class="alm-stat-grid">
 			<a class="alm-stat-tile alm-stat-tile-active" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::CATEGORY_AFFILIATE ) ) ); ?>">
-				<span class="alm-stat-tile-number"><?php echo esc_html( $status_summary[ ALM_Install::CATEGORY_AFFILIATE ] ); ?></span>
+				<span class="alm-stat-tile-number"><?php echo esc_html( $category_summary[ ALM_Install::CATEGORY_AFFILIATE ] ); ?></span>
 				<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::tab_label( ALM_Install::CATEGORY_AFFILIATE ) ); ?></span>
 			</a>
 			<a class="alm-stat-tile alm-stat-tile-convertible" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::CATEGORY_CANDIDATE ) ) ); ?>">
-				<span class="alm-stat-tile-number"><?php echo esc_html( $status_summary[ ALM_Install::CATEGORY_CANDIDATE ] ); ?></span>
+				<span class="alm-stat-tile-number"><?php echo esc_html( $category_summary[ ALM_Install::CATEGORY_CANDIDATE ] ); ?></span>
 				<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::tab_label( ALM_Install::CATEGORY_CANDIDATE ) ); ?></span>
 			</a>
 			<?php if ( $dead_count > 0 ) : ?>
@@ -81,7 +81,7 @@ $alm_links_url = static function ( $args = array() ) {
 				/* translators: 1: label "Other Outbound Links", 2: count */
 				esc_html__( '%1$s: %2$d -- not shown individually; these are internal navigation, social/embed links, and other content that will never be an affiliate opportunity.', 'affiliate-link-manager' ),
 				esc_html( ALM_Links_List_Table::tab_label( ALM_Install::CATEGORY_NONAFFILIATE ) ),
-				(int) $status_summary[ ALM_Install::CATEGORY_NONAFFILIATE ]
+				(int) $category_summary[ ALM_Install::CATEGORY_NONAFFILIATE ]
 			);
 			?>
 		</p>

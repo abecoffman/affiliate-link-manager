@@ -286,10 +286,10 @@ class ALM_Scanner {
 	 * a sticky admin decision that shouldn't be able to silently
 	 * revert, and a confirmed-dead verdict is a stronger, more specific
 	 * fact than "just not found" that this sweep must never quietly
-	 * downgrade (today's status=stale conflation happened to protect
-	 * dead rows from this for free, since dead was always stale too --
-	 * modifier IS NULL is this method's explicit equivalent now that
-	 * dead/stale are distinct values).
+	 * downgrade (the old single status column's stale/dead conflation
+	 * used to protect dead rows from this for free, since dead was
+	 * always stale too -- modifier IS NULL is this method's explicit
+	 * equivalent now that dead/stale are distinct values).
 	 *
 	 * A swept row demotes all the way to nonaffiliate+stale, even if it
 	 * was `affiliate` (a real, converted link) or `candidate` a moment

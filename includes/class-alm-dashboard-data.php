@@ -49,9 +49,9 @@ class ALM_Dashboard_Data {
 	 * headline on the Dashboard (ShopMy X, RewardStyle Y) -- excludes
 	 * the 'unclassified' provider bucket on purpose. That bucket mixes
 	 * Candidate Affiliate Links and Other Outbound Links together and
-	 * belongs to the three-tier status summary (get_status_summary()),
+	 * belongs to the three-tier category summary (get_category_summary()),
 	 * not a per-network breakdown; a real provider only ever produces
-	 * status=active links (see ALM_Scanner::upsert_link()), so this
+	 * category=affiliate links (see ALM_Scanner::upsert_link()), so this
 	 * list is naturally just ShopMy/RewardStyle/etc., never noise.
 	 *
 	 * @return array<string,array{label:string,count:int}>
@@ -91,7 +91,7 @@ class ALM_Dashboard_Data {
 	 *
 	 * @return array<string,int>
 	 */
-	public function get_status_summary() {
+	public function get_category_summary() {
 		global $wpdb;
 		$table = ALM_Install::table_name();
 

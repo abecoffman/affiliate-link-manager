@@ -553,9 +553,10 @@ class ALM_Admin {
 	 * Single-row "Remove from Post" for the Edit modal -- unwraps the
 	 * link out of the post entirely and deletes its tracking row, via
 	 * ALM_Link_Converter::remove(). Only ever actually acts on a
-	 * status=stale row; the modal itself already only shows this action
-	 * for a stale link (see assets/admin.js), but this is re-checked
-	 * server-side too rather than trusting the client alone.
+	 * category=nonaffiliate, modifier=dead row; the modal itself already
+	 * only shows this action for a confirmed-dead link (see
+	 * assets/admin.js), but this is re-checked server-side too rather
+	 * than trusting the client alone.
 	 *
 	 * @return void
 	 */
@@ -690,8 +691,8 @@ class ALM_Admin {
 	}
 
 	public function render_dashboard() {
-		$stats          = $this->dashboard_data->get_provider_stats();
-		$status_summary = $this->dashboard_data->get_status_summary();
+		$stats            = $this->dashboard_data->get_provider_stats();
+		$category_summary = $this->dashboard_data->get_category_summary();
 		// The old "Stale" tile counted every status=stale row, dead-
 		// confirmed or not -- the not-yet-cleaned-up not-rediscovered
 		// slice is pure background housekeeping now (see

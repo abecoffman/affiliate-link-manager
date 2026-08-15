@@ -95,7 +95,7 @@ class DashboardDataIntegrationTest extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( 'shopmy', $stats );
 		$this->assertSame( 2, $stats['shopmy']['count'] );
-		$this->assertArrayNotHasKey( 'unclassified', $stats, 'The always-matches fallback provider is never a real per-network row -- it belongs to get_status_summary() instead.' );
+		$this->assertArrayNotHasKey( 'unclassified', $stats, 'The always-matches fallback provider is never a real per-network row -- it belongs to get_category_summary() instead.' );
 	}
 
 	public function test_get_provider_stats_uses_the_providers_own_label() {
@@ -107,7 +107,7 @@ class DashboardDataIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( $provider->get_label(), $stats['shopmy']['label'] );
 	}
 
-	public function test_get_status_summary_counts_the_three_headline_tiers() {
+	public function test_get_category_summary_counts_the_three_headline_tiers() {
 		$this->insert_link( 'https://go.shopmy.us/apx/1', ALM_Install::CATEGORY_AFFILIATE, null, 'shopmy' );
 		$this->insert_link( 'https://candidate.example/a', ALM_Install::CATEGORY_CANDIDATE );
 		$this->insert_link( 'https://candidate.example/b', ALM_Install::CATEGORY_CANDIDATE );
@@ -116,15 +116,15 @@ class DashboardDataIntegrationTest extends WP_UnitTestCase {
 		// must never inflate any of the three counts.
 		$this->insert_link( 'https://stale.example/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 
-		$summary = $this->dashboard_data->get_status_summary();
+		$summary = $this->dashboard_data->get_category_summary();
 
 		$this->assertSame( 1, $summary[ ALM_Install::CATEGORY_AFFILIATE ] );
 		$this->assertSame( 2, $summary[ ALM_Install::CATEGORY_CANDIDATE ] );
 		$this->assertSame( 1, $summary[ ALM_Install::CATEGORY_NONAFFILIATE ] );
 	}
 
-	public function test_get_status_summary_defaults_every_tier_to_zero_on_an_empty_table() {
-		$summary = $this->dashboard_data->get_status_summary();
+	public function test_get_category_summary_defaults_every_tier_to_zero_on_an_empty_table() {
+		$summary = $this->dashboard_data->get_category_summary();
 
 		$this->assertSame( 0, $summary[ ALM_Install::CATEGORY_AFFILIATE ] );
 		$this->assertSame( 0, $summary[ ALM_Install::CATEGORY_CANDIDATE ] );

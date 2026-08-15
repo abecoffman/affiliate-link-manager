@@ -18,8 +18,8 @@
  * Ignore/Delete are secondary actions in the footer, deliberately kept
  * apart from Cancel/Save (a different kind of action, not part of the
  * same URL-editing flow). "Remove from Post" joins them there too --
- * only shown for a confirmed-dead (status=stale) link, see
- * ALM_Link_Converter::remove().
+ * only shown for a confirmed-dead (category=nonaffiliate, modifier=dead)
+ * link, see ALM_Link_Converter::remove().
  *
  * The thumbnail slot (#alm-edit-link-thumb) is populated the same way
  * -- JS renders straight from the row's own data-thumbnail-url/
