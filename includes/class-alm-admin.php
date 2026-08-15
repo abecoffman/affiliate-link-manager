@@ -580,13 +580,14 @@ class ALM_Admin {
 			wp_send_json_error( array( 'message' => __( 'Link not found.', 'affiliate-link-manager' ) ), 404 );
 		}
 
-		// status=stale alone isn't enough -- see
+		// category=nonaffiliate alone isn't enough -- see
 		// ALM_Links_List_Table::bulk_remove()'s own comment for why a
-		// merely not-rediscovered, never-confirmed-dead row must never
-		// reach this far. Real correctness bug found live: this check
-		// only ever verified $item['status'], even though this exact
-		// error message already claimed dead_confirmed_at was required.
-		if ( ALM_Install::STATUS_STALE !== $item['status'] || empty( $item['dead_confirmed_at'] ) ) {
+		// merely not-rediscovered (stale, not dead) row must never
+		// reach this far. (This gate used to be a real correctness bug,
+		// found live: it only ever checked $item['status'] === 'stale',
+		// even though this exact error message already claimed a
+		// confirmed-dead verdict was required.)
+		if ( ALM_Install::CATEGORY_NONAFFILIATE !== $item['category'] || ALM_Install::MODIFIER_DEAD !== $item['modifier'] ) {
 			wp_send_json_error( array( 'message' => __( 'Only a confirmed-dead link can be removed this way.', 'affiliate-link-manager' ) ), 400 );
 		}
 

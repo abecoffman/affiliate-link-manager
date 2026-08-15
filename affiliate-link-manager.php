@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.21.0
+ * Version:     1.22.0
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.21.0' );
+define( 'ALM_VERSION', '1.22.0' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -109,39 +109,45 @@ function alm_run_domain_recheck_cron() {
 
 	// Third piggybacked job, same "housekeeping nobody's watching"
 	// reasoning: quietly deletes tracking rows for links that are
-	// status=stale (the scanner hasn't rediscovered them) AND were
-	// never confirmed dead (dead_confirmed_at IS NULL -- those go
-	// through the real, visible Dead Links flow instead, never this).
-	// This population can never resolve into anything else on its own
-	// -- only Candidates ever get health-checked, and a stale row
-	// isn't one -- so there's nothing for a user to ever review here;
-	// it's pure index bookkeeping, exactly the "maintenance of the
-	// index really needs to be abstracted from the user" ask. A link
-	// genuinely still on the page gets picked back up by a future scan
-	// (full or incremental, see alm_watchdog_reprime_stuck_tasks())
-	// well before this window closes; last_seen simply never advances
-	// again once a row goes stale, so it's a safe, if slightly
-	// conservative, proxy for "how long has this actually been gone."
+	// nonaffiliate+stale (the scanner hasn't rediscovered them, and
+	// they were never confirmed dead -- those go through the real,
+	// visible Dead Links flow instead, never this). This population
+	// can never resolve into anything else on its own -- only
+	// Candidates ever get health-checked, and a stale row isn't one --
+	// so there's nothing for a user to ever review here; it's pure
+	// index bookkeeping, exactly the "maintenance of the index really
+	// needs to be abstracted from the user" ask, and per direct
+	// follow-up feedback ("I don't think we want to keep these links
+	// in the db for any meaningful period of time") this is
+	// deliberately a short window, not a long grace period -- see
+	// sweep_stale_links()'s own docblock in ALM_Scanner for the
+	// demotion this cleanup depends on. Cutoff is based on
+	// classified_at (when a row actually became nonaffiliate+stale),
+	// not last_seen -- the more direct fact for "how long has this
+	// specific classification been sitting unresolved" now that the
+	// two are no longer the same thing by construction.
 	global $wpdb;
 	$table = ALM_Install::table_name();
 	/**
-	 * How many days a status=stale, never-confirmed-dead link's
-	 * tracking row is kept before being quietly deleted.
+	 * How many days a nonaffiliate+stale link's tracking row is kept
+	 * before being quietly deleted. Short on purpose -- long enough to
+	 * survive a single transient miss (an adapter hiccup, a briefly-
+	 * unpublished post), nowhere near "meaningful" retention.
 	 *
 	 * @param int $retention_days
 	 */
-	$retention_days = (int) apply_filters( 'alm_stale_link_retention_days', 60 );
-	// last_seen is stored via current_time('mysql') everywhere else in
-	// this plugin (site-local, not GMT) -- current_time('timestamp')
+	$retention_days = (int) apply_filters( 'alm_stale_link_retention_days', 3 );
+	// classified_at is stored via current_time('mysql') everywhere else
+	// in this plugin (site-local, not GMT) -- current_time('timestamp')
 	// (no $gmt flag) + gmdate() is WP's own idiom for computing another
 	// datetime on that same WP-local basis, avoiding a second,
 	// redundant timezone shift from PHP's own date(). Same established
 	// pattern (and same phpcs exception) as ALM_Admin::format_last_run().
 	$cutoff = gmdate( 'Y-m-d H:i:s', strtotime( "-{$retention_days} days", current_time( 'timestamp' ) ) ); // phpcs:ignore WordPress.DateTime.CurrentTimeTimestamp.Requested -- deliberate, see comment above.
 
-	$sql = "DELETE FROM {$table} WHERE status = %s AND dead_confirmed_at IS NULL AND last_seen < %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+	$sql = "DELETE FROM {$table} WHERE category = %s AND modifier = %s AND classified_at < %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 	// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; a plain bulk delete, not a per-request query needing caching.
-	$wpdb->query( $wpdb->prepare( $sql, ALM_Install::STATUS_STALE, $cutoff ) );
+	$wpdb->query( $wpdb->prepare( $sql, ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE, $cutoff ) );
 }
 add_action( 'alm_domain_recheck_cron', 'alm_run_domain_recheck_cron' );
 

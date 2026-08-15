@@ -56,27 +56,30 @@ class DashboardDataIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * @param string $url
-	 * @param string $status
-	 * @param string $provider
+	 * @param string      $url
+	 * @param string      $category
+	 * @param string|null $modifier
+	 * @param string      $provider
 	 * @return int Inserted row id.
 	 */
-	private function insert_link( $url, $status, $provider = 'unclassified' ) {
+	private function insert_link( $url, $category, $modifier = null, $provider = 'unclassified' ) {
 		global $wpdb;
 		$now = current_time( 'mysql' );
 
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => 1,
-				'provider'    => $provider,
-				'adapter'     => 'post_content',
-				'location'    => (string) wp_rand(),
-				'url'         => $url,
-				'anchor_text' => 'link',
-				'status'      => $status,
-				'first_seen'  => $now,
-				'last_seen'   => $now,
+				'post_id'       => 1,
+				'provider'      => $provider,
+				'adapter'       => 'post_content',
+				'location'      => (string) wp_rand(),
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => $category,
+				'modifier'      => $modifier,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -84,9 +87,9 @@ class DashboardDataIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_get_provider_stats_counts_only_real_providers_grouped_by_id() {
-		$this->insert_link( 'https://go.shopmy.us/apx/1', ALM_Install::STATUS_ACTIVE, 'shopmy' );
-		$this->insert_link( 'https://go.shopmy.us/apx/2', ALM_Install::STATUS_ACTIVE, 'shopmy' );
-		$this->insert_link( 'https://unclassified.example/x', ALM_Install::STATUS_CONVERTIBLE, 'unclassified' );
+		$this->insert_link( 'https://go.shopmy.us/apx/1', ALM_Install::CATEGORY_AFFILIATE, null, 'shopmy' );
+		$this->insert_link( 'https://go.shopmy.us/apx/2', ALM_Install::CATEGORY_AFFILIATE, null, 'shopmy' );
+		$this->insert_link( 'https://unclassified.example/x', ALM_Install::CATEGORY_CANDIDATE, null, 'unclassified' );
 
 		$stats = $this->dashboard_data->get_provider_stats();
 
@@ -96,7 +99,7 @@ class DashboardDataIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_get_provider_stats_uses_the_providers_own_label() {
-		$this->insert_link( 'https://go.shopmy.us/apx/1', ALM_Install::STATUS_ACTIVE, 'shopmy' );
+		$this->insert_link( 'https://go.shopmy.us/apx/1', ALM_Install::CATEGORY_AFFILIATE, null, 'shopmy' );
 
 		$stats    = $this->dashboard_data->get_provider_stats();
 		$provider = $this->providers->get_provider( 'shopmy' );
@@ -105,27 +108,27 @@ class DashboardDataIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_get_status_summary_counts_the_three_headline_tiers() {
-		$this->insert_link( 'https://go.shopmy.us/apx/1', ALM_Install::STATUS_ACTIVE, 'shopmy' );
-		$this->insert_link( 'https://candidate.example/a', ALM_Install::STATUS_CONVERTIBLE );
-		$this->insert_link( 'https://candidate.example/b', ALM_Install::STATUS_CONVERTIBLE );
-		$this->insert_link( 'https://noise.example/a', ALM_Install::STATUS_UNCLASSIFIED );
+		$this->insert_link( 'https://go.shopmy.us/apx/1', ALM_Install::CATEGORY_AFFILIATE, null, 'shopmy' );
+		$this->insert_link( 'https://candidate.example/a', ALM_Install::CATEGORY_CANDIDATE );
+		$this->insert_link( 'https://candidate.example/b', ALM_Install::CATEGORY_CANDIDATE );
+		$this->insert_link( 'https://noise.example/a', ALM_Install::CATEGORY_NONAFFILIATE );
 		// A stale row belongs to neither tab nor tile the summary feeds --
 		// must never inflate any of the three counts.
-		$this->insert_link( 'https://stale.example/a', ALM_Install::STATUS_STALE );
+		$this->insert_link( 'https://stale.example/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 
 		$summary = $this->dashboard_data->get_status_summary();
 
-		$this->assertSame( 1, $summary[ ALM_Install::STATUS_ACTIVE ] );
-		$this->assertSame( 2, $summary[ ALM_Install::STATUS_CONVERTIBLE ] );
-		$this->assertSame( 1, $summary[ ALM_Install::STATUS_UNCLASSIFIED ] );
+		$this->assertSame( 1, $summary[ ALM_Install::CATEGORY_AFFILIATE ] );
+		$this->assertSame( 2, $summary[ ALM_Install::CATEGORY_CANDIDATE ] );
+		$this->assertSame( 1, $summary[ ALM_Install::CATEGORY_NONAFFILIATE ] );
 	}
 
 	public function test_get_status_summary_defaults_every_tier_to_zero_on_an_empty_table() {
 		$summary = $this->dashboard_data->get_status_summary();
 
-		$this->assertSame( 0, $summary[ ALM_Install::STATUS_ACTIVE ] );
-		$this->assertSame( 0, $summary[ ALM_Install::STATUS_CONVERTIBLE ] );
-		$this->assertSame( 0, $summary[ ALM_Install::STATUS_UNCLASSIFIED ] );
+		$this->assertSame( 0, $summary[ ALM_Install::CATEGORY_AFFILIATE ] );
+		$this->assertSame( 0, $summary[ ALM_Install::CATEGORY_CANDIDATE ] );
+		$this->assertSame( 0, $summary[ ALM_Install::CATEGORY_NONAFFILIATE ] );
 	}
 
 	public function test_get_dashboard_tasks_returns_all_four_tasks_in_a_stable_order() {

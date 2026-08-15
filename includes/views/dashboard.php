@@ -9,8 +9,8 @@
  * is left, one button. Replaces an earlier version where those three
  * actions lived in separately-shaped cards with asymmetric feedback
  * (only Scan said what it had last accomplished) -- see
- * ALM_Admin::get_dashboard_tasks() for where "last run" phrasing comes
- * from, now computed the same way for all three.
+ * ALM_Dashboard_Data::get_dashboard_tasks() for where "last run"
+ * phrasing comes from, now computed the same way for all three.
  *
  * @package ALM
  *
@@ -46,18 +46,18 @@ $alm_links_url = static function ( $args = array() ) {
 		</div>
 
 		<div class="alm-stat-grid">
-			<a class="alm-stat-tile alm-stat-tile-active" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_ACTIVE ) ) ); ?>">
-				<span class="alm-stat-tile-number"><?php echo esc_html( $status_summary[ ALM_Install::STATUS_ACTIVE ] ); ?></span>
-				<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_ACTIVE, true ) ); ?></span>
+			<a class="alm-stat-tile alm-stat-tile-active" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::CATEGORY_AFFILIATE ) ) ); ?>">
+				<span class="alm-stat-tile-number"><?php echo esc_html( $status_summary[ ALM_Install::CATEGORY_AFFILIATE ] ); ?></span>
+				<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::tab_label( ALM_Install::CATEGORY_AFFILIATE ) ); ?></span>
 			</a>
-			<a class="alm-stat-tile alm-stat-tile-convertible" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::STATUS_CONVERTIBLE ) ) ); ?>">
-				<span class="alm-stat-tile-number"><?php echo esc_html( $status_summary[ ALM_Install::STATUS_CONVERTIBLE ] ); ?></span>
-				<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_CONVERTIBLE, true ) ); ?></span>
+			<a class="alm-stat-tile alm-stat-tile-convertible" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::CATEGORY_CANDIDATE ) ) ); ?>">
+				<span class="alm-stat-tile-number"><?php echo esc_html( $status_summary[ ALM_Install::CATEGORY_CANDIDATE ] ); ?></span>
+				<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::tab_label( ALM_Install::CATEGORY_CANDIDATE ) ); ?></span>
 			</a>
 			<?php if ( $dead_count > 0 ) : ?>
-				<a class="alm-stat-tile alm-stat-tile-dead" href="<?php echo esc_url( $alm_links_url( array( 'status' => 'dead' ) ) ); ?>">
+				<a class="alm-stat-tile alm-stat-tile-dead" href="<?php echo esc_url( $alm_links_url( array( 'status' => ALM_Install::MODIFIER_DEAD ) ) ); ?>">
 					<span class="alm-stat-tile-number"><?php echo esc_html( $dead_count ); ?></span>
-					<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_STALE, true ) ); ?></span>
+					<span class="alm-stat-tile-label"><?php echo esc_html( ALM_Links_List_Table::tab_label( ALM_Install::MODIFIER_DEAD ) ); ?></span>
 				</a>
 			<?php endif; ?>
 		</div>
@@ -80,8 +80,8 @@ $alm_links_url = static function ( $args = array() ) {
 			printf(
 				/* translators: 1: label "Other Outbound Links", 2: count */
 				esc_html__( '%1$s: %2$d -- not shown individually; these are internal navigation, social/embed links, and other content that will never be an affiliate opportunity.', 'affiliate-link-manager' ),
-				esc_html( ALM_Links_List_Table::status_label( ALM_Install::STATUS_UNCLASSIFIED, true ) ),
-				(int) $status_summary[ ALM_Install::STATUS_UNCLASSIFIED ]
+				esc_html( ALM_Links_List_Table::tab_label( ALM_Install::CATEGORY_NONAFFILIATE ) ),
+				(int) $status_summary[ ALM_Install::CATEGORY_NONAFFILIATE ]
 			);
 			?>
 		</p>

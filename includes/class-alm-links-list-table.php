@@ -171,10 +171,10 @@ class ALM_Links_List_Table extends WP_List_Table {
 			}
 		}
 
-		// Only ever actually removes rows that are both status=stale
-		// AND dead_confirmed_at IS NOT NULL -- see bulk_remove(); listed
-		// unconditionally here the same way Ignore/Delete are, not
-		// gated per-tab.
+		// Only ever actually removes rows that are both
+		// category=nonaffiliate AND modifier=dead -- see bulk_remove();
+		// listed unconditionally here the same way Ignore/Delete are,
+		// not gated per-tab.
 		$edits_post['remove_dead_links'] = __( 'Remove from Post', 'affiliate-link-manager' );
 
 		$tracking_only = array(
@@ -189,64 +189,37 @@ class ALM_Links_List_Table extends WP_List_Table {
 	}
 
 	/**
-	 * Single source of truth for status display text -- used by
-	 * get_views() (the tab bar) and the Dashboard, so the two can never
-	 * drift out of sync on wording. No longer has a per-row badge of
-	 * its own (the Links table's Status column was removed -- redundant
-	 * with Affiliate, and which tab you're on already says the status).
-	 * Two forms of the same mapping, not two separate ones:
-	 * $long is for section/tab-level text ("Affiliate Links",
-	 * "Candidate Affiliate Links" -- the three-tier framing the user
-	 * asked for), $short is for the per-row status badge, where the
-	 * long form would wrap awkwardly next to the other (short) badges
-	 * in that same row.
+	 * Single source of truth for section/tab-level display text -- used
+	 * by get_views() (the tab bar) and the Dashboard, so the two can
+	 * never drift out of sync on wording. Keyed by a UI-level tab
+	 * identifier, not a raw stored category/modifier value directly --
+	 * 'dead' and 'ignored' both mean category=nonaffiliate plus a
+	 * specific modifier, not a value that exists on its own, the same
+	 * way 'dead' already wasn't a real stored status value even before
+	 * this table gained a modifier column at all. No per-row badge
+	 * anymore (the Links table's Status column was removed -- redundant
+	 * with Affiliate, and which tab you're on already says the status),
+	 * so this only ever needs the one long form now, not a short/long
+	 * pair.
 	 *
-	 * STATUS_CONVERTIBLE reads as "Candidate(s)" here, not literally
-	 * "convertible" in the UI sense: it's a link ALM_Candidate_Classifier
-	 * decided looks like a real affiliate-link opportunity, nothing
-	 * converts it automatically.
+	 * 'candidate' reads as "Candidate(s)" here, not literally the
+	 * schema's own naming: it's a link ALM_Candidate_Classifier decided
+	 * looks like a real affiliate-link opportunity, nothing converts it
+	 * automatically.
 	 *
-	 * @param string $status
-	 * @param bool   $long
+	 * @param string $tab_key One of 'affiliate'|'candidate'|'nonaffiliate'|'dead'|'ignored'.
 	 * @return string
 	 */
-	public static function status_label( $status, $long = false ) {
+	public static function tab_label( $tab_key ) {
 		$labels = array(
-			ALM_Install::STATUS_ACTIVE       => array(
-				'short' => __( 'Affiliate Link', 'affiliate-link-manager' ),
-				'long'  => __( 'Affiliate Links', 'affiliate-link-manager' ),
-			),
-			ALM_Install::STATUS_CONVERTIBLE  => array(
-				'short' => __( 'Candidate', 'affiliate-link-manager' ),
-				'long'  => __( 'Candidate Affiliate Links', 'affiliate-link-manager' ),
-			),
-			ALM_Install::STATUS_UNCLASSIFIED => array(
-				'short' => __( 'Other Outbound Link', 'affiliate-link-manager' ),
-				'long'  => __( 'Other Outbound Links', 'affiliate-link-manager' ),
-			),
-			// "Dead", not "Stale" -- status=stale is the same raw column
-			// value internally (see ALM_Install::create_table()'s
-			// docblock for why), but every row a user can actually ever
-			// see now is a confirmed-dead one specifically (get_views()/
-			// prepare_items() below exclude the merely-not-rediscovered
-			// slice from every browsable view -- that population is
-			// pure background housekeeping, cleaned up quietly by cron,
-			// never something to show or ask a user to interpret).
-			ALM_Install::STATUS_STALE        => array(
-				'short' => __( 'Dead', 'affiliate-link-manager' ),
-				'long'  => __( 'Dead Links', 'affiliate-link-manager' ),
-			),
-			ALM_Install::STATUS_IGNORED      => array(
-				'short' => __( 'Ignored', 'affiliate-link-manager' ),
-				'long'  => __( 'Ignored', 'affiliate-link-manager' ),
-			),
+			'affiliate'    => __( 'Affiliate Links', 'affiliate-link-manager' ),
+			'candidate'    => __( 'Candidate Affiliate Links', 'affiliate-link-manager' ),
+			'nonaffiliate' => __( 'Other Outbound Links', 'affiliate-link-manager' ),
+			'dead'         => __( 'Dead Links', 'affiliate-link-manager' ),
+			'ignored'      => __( 'Ignored', 'affiliate-link-manager' ),
 		);
 
-		if ( ! isset( $labels[ $status ] ) ) {
-			return ucfirst( $status );
-		}
-
-		return $labels[ $status ][ $long ? 'long' : 'short' ];
+		return isset( $labels[ $tab_key ] ) ? $labels[ $tab_key ] : ucfirst( $tab_key );
 	}
 
 	/**
@@ -273,31 +246,28 @@ class ALM_Links_List_Table extends WP_List_Table {
 	/**
 	 * Status view-tabs above the table ("All | Candidate Affiliate
 	 * Links | Affiliate Links | ...", same pattern as Posts' "All |
-	 * Published | Drafts"). Other Outbound Links (STATUS_UNCLASSIFIED)
-	 * deliberately never gets a tab here at all, regardless of count --
-	 * it's noise (internal nav, social icons, reference sites), not
-	 * something to browse; the Dashboard Overview is the one place its
-	 * count is shown. Every other empty status is hidden rather than
-	 * shown as a permanent "(0)", keeping the tab bar from accumulating
-	 * statuses nobody's ever actually seen.
+	 * Published | Drafts"). Other Outbound Links (a plain, unmodified
+	 * nonaffiliate link) deliberately never gets a tab here at all,
+	 * regardless of count -- it's noise (internal nav, social icons,
+	 * reference sites), not something to browse; the Dashboard
+	 * Overview is the one place its count is shown. Every other empty
+	 * tab is hidden rather than shown as a permanent "(0)", keeping the
+	 * tab bar from accumulating tabs nobody's ever actually seen.
 	 *
-	 * "Dead" is the one tab here that isn't a real ALM_Install::STATUS_*
-	 * value on its own -- it's the status=stale AND dead_confirmed_at IS
-	 * NOT NULL slice (see ALM_Install::create_table()'s docblock for why
-	 * status=stale alone conflates two different meanings, and
-	 * ALM_Install::count_confirmed_dead() for the shared query).
+	 * "Dead" and "Ignored" both mean category=nonaffiliate plus a
+	 * specific modifier -- see ALM_Install::count_confirmed_dead() and
+	 * this table's own tab_label() docblock.
 	 *
-	 * The *other* slice of status=stale -- a link the last scan simply
-	 * didn't rediscover, never confirmed dead one way or the other --
-	 * deliberately has no tab of its own anywhere, at any count. It
-	 * can never resolve into anything else on its own (only Candidates
-	 * ever get health-checked, and a stale row is never a Candidate),
-	 * so showing it as something to review would be asking an admin to
-	 * interpret internal scan bookkeeping with nothing real to decide.
-	 * It's cleaned up quietly by cron instead (see
-	 * alm_run_domain_recheck_cron()'s docblock) -- reported live as
-	 * "the maintenance of the index really needs to be abstracted from
-	 * the user."
+	 * The *other* nonaffiliate modifier -- stale, a link the last scan
+	 * simply didn't rediscover -- deliberately has no tab of its own
+	 * anywhere, at any count. It can never resolve into anything else
+	 * on its own (only Candidates ever get health-checked, and a stale
+	 * row is never a Candidate), so showing it as something to review
+	 * would be asking an admin to interpret internal scan bookkeeping
+	 * with nothing real to decide. It's cleaned up quietly by cron
+	 * instead (see alm_run_domain_recheck_cron()'s docblock) --
+	 * reported live as "the maintenance of the index really needs to
+	 * be abstracted from the user."
 	 *
 	 * @return array<string,string>
 	 */
@@ -306,64 +276,77 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$table = ALM_Install::table_name();
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$counts     = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
-		$by_status  = wp_list_pluck( $counts, 'total', 'status' );
-		$dead_count = ALM_Install::count_confirmed_dead();
+		$rows = $wpdb->get_results( "SELECT category, modifier, COUNT(*) as total FROM {$table} GROUP BY category, modifier", ARRAY_A );
+
+		$counts = array(
+			ALM_Install::CATEGORY_CANDIDATE => 0,
+			ALM_Install::CATEGORY_AFFILIATE => 0,
+			ALM_Install::MODIFIER_IGNORED   => 0,
+		);
+		foreach ( (array) $rows as $row ) {
+			if ( ALM_Install::CATEGORY_CANDIDATE === $row['category'] ) {
+				$counts[ ALM_Install::CATEGORY_CANDIDATE ] = (int) $row['total'];
+			} elseif ( ALM_Install::CATEGORY_AFFILIATE === $row['category'] ) {
+				$counts[ ALM_Install::CATEGORY_AFFILIATE ] = (int) $row['total'];
+			} elseif ( ALM_Install::MODIFIER_IGNORED === $row['modifier'] ) {
+				$counts[ ALM_Install::MODIFIER_IGNORED ] = (int) $row['total'];
+			}
+		}
+		// Not folded into the loop above -- see its own docblock for why
+		// this needs the compound category+modifier query it already is,
+		// not just another bucket of the same GROUP BY.
+		$counts[ ALM_Install::MODIFIER_DEAD ] = ALM_Install::count_confirmed_dead();
 
 		// "All" here means every tab a user can actually browse, not
-		// literally every row -- Other Outbound Links (noise) and the
-		// not-rediscovered/never-confirmed-dead slice of status=stale
-		// (pure housekeeping, see this method's own docblock) are both
-		// excluded, the same way prepare_items()'s own "All" query
-		// excludes them.
-		$visible_statuses = array( ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_ACTIVE, ALM_Install::STATUS_IGNORED );
-		$total            = array_sum( array_intersect_key( $by_status, array_flip( $visible_statuses ) ) ) + $dead_count;
+		// literally every row.
+		$total = array_sum( $counts );
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filter selection, not a state-changing action.
 		$current  = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : '';
 		$base_url = remove_query_arg( array( 'status', 'paged' ) );
 
-		$labels = array( '' => __( 'All', 'affiliate-link-manager' ) );
-		foreach ( $visible_statuses as $status ) {
-			// Candidates listed first -- it's the tab most worth an
-			// editor's attention, not an alphabetical/schema accident.
-			$labels[ $status ] = self::status_label( $status, true );
+		// Candidates listed first -- it's the tab most worth an editor's
+		// attention, not an alphabetical/schema accident. "Dead" sits
+		// right before Ignored -- the last real, actionable tab.
+		$tab_order = array(
+			ALM_Install::CATEGORY_CANDIDATE,
+			ALM_Install::CATEGORY_AFFILIATE,
+			ALM_Install::MODIFIER_DEAD,
+			ALM_Install::MODIFIER_IGNORED,
+		);
 
-			// "Dead" sits right before Ignored -- the last real,
-			// actionable tab, not tucked after a "Stale" sibling that
-			// no longer exists.
-			if ( ALM_Install::STATUS_ACTIVE === $status ) {
-				$labels['dead'] = self::status_label( ALM_Install::STATUS_STALE, true );
-			}
-		}
-
-		$views = array();
-		foreach ( $labels as $status => $label ) {
-			if ( '' === $status ) {
-				$count = $total;
-			} elseif ( 'dead' === $status ) {
-				$count = $dead_count;
-			} else {
-				$count = isset( $by_status[ $status ] ) ? (int) $by_status[ $status ] : 0;
-			}
-
-			if ( '' !== $status && 0 === $count ) {
+		$views = array(
+			'all' => $this->render_view_link( '', __( 'All', 'affiliate-link-manager' ), $total, $current, $base_url ),
+		);
+		foreach ( $tab_order as $tab_key ) {
+			if ( 0 === $counts[ $tab_key ] ) {
 				continue;
 			}
-
-			$url   = '' === $status ? $base_url : add_query_arg( 'status', $status, $base_url );
-			$class = ( $current === $status ) ? ' class="current"' : '';
-
-			$views[ '' === $status ? 'all' : $status ] = sprintf(
-				'<a href="%s"%s>%s <span class="count">(%d)</span></a>',
-				esc_url( $url ),
-				$class,
-				esc_html( $label ),
-				$count
-			);
+			$views[ $tab_key ] = $this->render_view_link( $tab_key, self::tab_label( $tab_key ), $counts[ $tab_key ], $current, $base_url );
 		}
 
 		return $views;
+	}
+
+	/**
+	 * @param string $tab_key  '' for "All".
+	 * @param string $label
+	 * @param int    $count
+	 * @param string $current  The currently-active ?status= value, '' for "All".
+	 * @param string $base_url
+	 * @return string
+	 */
+	private function render_view_link( $tab_key, $label, $count, $current, $base_url ) {
+		$url   = '' === $tab_key ? $base_url : add_query_arg( 'status', $tab_key, $base_url );
+		$class = ( $current === $tab_key ) ? ' class="current"' : '';
+
+		return sprintf(
+			'<a href="%s"%s>%s <span class="count">(%d)</span></a>',
+			esc_url( $url ),
+			$class,
+			esc_html( $label ),
+			$count
+		);
 	}
 
 	/**
@@ -437,30 +420,28 @@ class ALM_Links_List_Table extends WP_List_Table {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only filters, not a state-changing action.
 		$status_param = isset( $_GET['status'] ) ? sanitize_key( wp_unslash( $_GET['status'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
-		if ( 'dead' === $status_param ) {
-			// Not a real ALM_Install::STATUS_* value -- see get_views()'s
-			// own docblock for why "Dead" needs this compound condition
-			// instead of a plain status equality.
-			$where[]  = 'alm.status = %s AND alm.dead_confirmed_at IS NOT NULL';
-			$params[] = ALM_Install::STATUS_STALE;
-		} elseif ( '' !== $status_param ) {
-			$where[]  = 'alm.status = %s';
+		if ( ALM_Install::CATEGORY_AFFILIATE === $status_param || ALM_Install::CATEGORY_CANDIDATE === $status_param ) {
+			$where[]  = 'alm.category = %s';
+			$params[] = $status_param;
+		} elseif ( ALM_Install::MODIFIER_DEAD === $status_param || ALM_Install::MODIFIER_IGNORED === $status_param ) {
+			$where[]  = 'alm.category = %s AND alm.modifier = %s';
+			$params[] = ALM_Install::CATEGORY_NONAFFILIATE;
 			$params[] = $status_param;
 		} else {
-			// "All" (no explicit status param) means every browsable tab
-			// -- two exclusions, neither a claimed "everything": Other
-			// Outbound Links is deliberately never part of the default/
-			// browsable view (only a summary count on the Dashboard), and
-			// a status=stale row is only included when it's the confirmed
-			// -dead slice (dead_confirmed_at IS NOT NULL) -- a row that's
-			// merely not-rediscovered-and-never-confirmed-dead is pure
-			// housekeeping (see get_views()'s own docblock), never shown
-			// here either. Direct ?status=unclassified/?status=stale links
-			// (e.g. an old bookmark) still work via the branch above; both
-			// exclusions only apply to the unfiltered default.
-			$where[]  = 'alm.status != %s AND ( alm.status != %s OR alm.dead_confirmed_at IS NOT NULL )';
-			$params[] = ALM_Install::STATUS_UNCLASSIFIED;
-			$params[] = ALM_Install::STATUS_STALE;
+			// "All" -- the unfiltered default, and the fallback for any
+			// unrecognized ?status= value (including a stale bookmark
+			// using one of the old raw status strings this table used
+			// before -- low priority, not part of any real flow anymore,
+			// safer to fall through to "All" than to try to keep
+			// interpreting retired values). Means every browsable tab,
+			// not literally every row: a plain (modifier IS NULL)
+			// nonaffiliate link is noise, never part of the default/
+			// browsable view (only a summary count on the Dashboard),
+			// and a nonaffiliate+stale row is pure housekeeping (see
+			// get_views()'s own docblock) -- neither shown here either.
+			$where[]  = 'NOT ( alm.category = %s AND ( alm.modifier IS NULL OR alm.modifier = %s ) )';
+			$params[] = ALM_Install::CATEGORY_NONAFFILIATE;
+			$params[] = ALM_Install::MODIFIER_STALE;
 		}
 
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -572,8 +553,8 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$notice_args = array();
 
 		if ( 'ignore' === $action ) {
-			$sql    = "UPDATE {$table} SET status = %s, dismissed_at = %s WHERE id IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed run of %d tokens, not user input; real values bound via prepare() below.
-			$params = array_merge( array( ALM_Install::STATUS_IGNORED, current_time( 'mysql' ) ), $ids );
+			$sql    = "UPDATE {$table} SET category = %s, modifier = %s, classified_at = %s WHERE id IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed run of %d tokens, not user input; real values bound via prepare() below.
+			$params = array_merge( array( ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_IGNORED, current_time( 'mysql' ) ), $ids );
 			$wpdb->query( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 		} elseif ( 'delete' === $action ) {
 			$sql = "DELETE FROM {$table} WHERE id IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as above.
@@ -643,14 +624,13 @@ class ALM_Links_List_Table extends WP_List_Table {
 	 * Unwraps each selected row's link out of its post entirely, via the
 	 * shared ALM_Link_Converter -- one row at a time, same reasoning as
 	 * bulk_convert() (a real content write, not a batched query). Only
-	 * ever actually processes rows that are both status=stale AND
-	 * dead_confirmed_at IS NOT NULL -- status=stale alone isn't enough
-	 * (a link merely not-rediscovered-and-never-confirmed-dead has
-	 * nothing to unwrap from a scan's perspective, and isn't something
-	 * "Remove from Post" should ever touch -- see get_views()'s own
-	 * docblock). Selecting a mix and running this doesn't silently
-	 * strip a link that isn't confirmed dead. Anything skipped (wrong
-	 * status, not confirmed dead, or a content-changed-since-scan
+	 * ever actually processes rows that are both category=nonaffiliate
+	 * AND modifier=dead -- a link merely not-rediscovered (stale, no
+	 * modifier=dead) has nothing to unwrap from a scan's perspective,
+	 * and isn't something "Remove from Post" should ever touch -- see
+	 * get_views()'s own docblock. Selecting a mix and running this
+	 * doesn't silently strip a link that isn't confirmed dead. Anything
+	 * skipped (wrong category/modifier, or a content-changed-since-scan
 	 * WP_Error) is counted and surfaced in the redirect notice, same
 	 * "leave it alone and say why" convention as bulk_convert().
 	 *
@@ -668,7 +648,7 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$removed = 0;
 		$skipped = 0;
 		foreach ( $items as $item ) {
-			if ( ALM_Install::STATUS_STALE !== $item['status'] || empty( $item['dead_confirmed_at'] ) ) {
+			if ( ALM_Install::CATEGORY_NONAFFILIATE !== $item['category'] || ALM_Install::MODIFIER_DEAD !== $item['modifier'] ) {
 				++$skipped;
 				continue;
 			}
@@ -764,14 +744,18 @@ class ALM_Links_List_Table extends WP_List_Table {
 		$context      = $this->get_link_context( $item );
 
 		return sprintf(
-			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-view-url="%4$s" data-ignore-url="%5$s" data-delete-url="%6$s" data-status="%7$s" data-url="%8$s" data-resolved-url="%9$s" data-anchor="%10$s" data-provider="%11$s" data-provider-label="%12$s" data-context-before="%13$s" data-context-after="%14$s" data-thumbnail-url="%15$s" data-thumbnail-fetched="%16$s" data-dead-confirmed="%17$s">%18$s</a>',
+			'<a href="#" class="alm-edit-link" data-id="%1$d" data-post-title="%2$s" data-post-edit-url="%3$s" data-view-url="%4$s" data-ignore-url="%5$s" data-delete-url="%6$s" data-category="%7$s" data-modifier="%8$s" data-url="%9$s" data-resolved-url="%10$s" data-anchor="%11$s" data-provider="%12$s" data-provider-label="%13$s" data-context-before="%14$s" data-context-after="%15$s" data-thumbnail-url="%16$s" data-thumbnail-fetched="%17$s">%18$s</a>',
 			(int) $item['id'],
 			esc_attr( get_the_title( $item['post_id'] ) ),
 			esc_attr( $edit_link ? $edit_link : '' ),
 			esc_attr( $view_link ? $view_link : '' ),
 			esc_attr( $this->row_action_url( 'ignore', $item['id'] ) ),
 			esc_attr( $this->row_action_url( 'delete', $item['id'] ) ),
-			esc_attr( $item['status'] ),
+			esc_attr( $item['category'] ),
+			// data-modifier drives the Edit modal's Ignore/Remove-from-Post
+			// visibility toggles directly ('ignored'/'dead') -- no separate
+			// boolean attribute needed for either anymore.
+			esc_attr( $item['modifier'] ? $item['modifier'] : '' ),
 			esc_attr( $item['url'] ),
 			// Only meaningful for a shortened link that's been through
 			// ALM_Shortener_Scanner -- see ALM_Install::create_table()'s
@@ -789,10 +773,6 @@ class ALM_Links_List_Table extends WP_List_Table {
 			// found nothing" (show the empty state, never re-fetch).
 			esc_attr( ! empty( $item['thumbnail_url'] ) ? $item['thumbnail_url'] : '' ),
 			esc_attr( ! empty( $item['thumbnail_fetched_at'] ) ? '1' : '' ),
-			// Drives the Edit modal's "Remove from Post" visibility --
-			// status=stale alone isn't enough (see bulk_remove()'s own
-			// comment), a row must be genuinely confirmed dead.
-			esc_attr( ! empty( $item['dead_confirmed_at'] ) ? '1' : '' ),
 			esc_html( $item['anchor_text'] )
 		);
 	}

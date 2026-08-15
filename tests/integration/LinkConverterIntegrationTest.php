@@ -51,7 +51,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -60,7 +60,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_link_row( $item['id'] );
 		$this->assertSame( 'shopmy', $row['provider'] );
-		$this->assertSame( 'active', $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $row['category'] );
 		$this->assertStringContainsString( 'go.shopmy.us/apx/sDXyBS', $row['url'] );
 
 		clean_post_cache( $post_id );
@@ -85,7 +85,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -94,7 +94,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_link_row( $item['id'] );
 		$this->assertSame( 'rewardstyle', $row['provider'] );
-		$this->assertSame( 'active', $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $row['category'] );
 		// A classify-only conversion never touches the URL or the post --
 		// RewardStyle can't build a new tracked link, this just relabels
 		// the record.
@@ -121,7 +121,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -141,7 +141,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_link_row( $item['id'] );
 		$this->assertSame( 'unclassified', $row['provider'], 'The record must be left exactly as it was.' );
-		$this->assertSame( 'convertible', $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $row['category'] );
 		$this->assertSame( 'https://www.zara.com/product', $row['url'] );
 
 		clean_post_cache( $post_id );
@@ -173,7 +173,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -183,7 +183,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_link_row( $item['id'] );
 		$this->assertSame( 'rewardstyle', $row['provider'], 'match_url() must infer RewardStyle from the rstyle.me host, never a manual choice.' );
-		$this->assertSame( 'active', $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $row['category'] );
 		$this->assertSame( $pasted_url, $row['url'] );
 
 		clean_post_cache( $post_id );
@@ -213,7 +213,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -248,7 +248,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -258,7 +258,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_link_row( $item['id'] );
 		$this->assertSame( 'unclassified', $row['provider'] );
-		$this->assertSame( 'unclassified', $row['status'], 'No real network recognized this URL -- must not be marked active.' );
+		$this->assertSame( ALM_Install::CATEGORY_NONAFFILIATE, $row['category'], 'No real network recognized this URL -- must not be marked affiliate.' );
 		$this->assertSame( $new_url, $row['url'] );
 	}
 
@@ -278,7 +278,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -294,7 +294,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_link_row( $item['id'] );
 		$this->assertSame( 'unclassified', $row['provider'], 'The record must be left exactly as it was.' );
-		$this->assertSame( 'convertible', $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $row['category'] );
 		$this->assertSame( 'https://www.zara.com/product', $row['url'] );
 	}
 
@@ -320,7 +320,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'             => '0',
 				'url'                  => 'https://www.zara.com/product',
 				'anchor_text'          => 'tank top',
-				'status'               => 'convertible',
+				'category'             => ALM_Install::CATEGORY_CANDIDATE,
 				'thumbnail_url'        => 'https://cdn.zara.com/old-product-photo.jpg',
 				'thumbnail_fetched_at' => current_time( 'mysql' ),
 			)
@@ -356,7 +356,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'             => '0',
 				'url'                  => 'https://www.zara.com/product',
 				'anchor_text'          => 'tank top',
-				'status'               => 'convertible',
+				'category'             => ALM_Install::CATEGORY_CANDIDATE,
 				'thumbnail_url'        => 'https://cdn.zara.com/still-the-right-photo.jpg',
 				'thumbnail_fetched_at' => current_time( 'mysql' ),
 			)
@@ -392,7 +392,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'             => '0',
 				'url'                  => 'https://www.zara.com/product',
 				'anchor_text'          => 'tank top',
-				'status'               => 'convertible',
+				'category'             => ALM_Install::CATEGORY_CANDIDATE,
 				'thumbnail_url'        => 'https://cdn.zara.com/old-product-photo.jpg',
 				'thumbnail_fetched_at' => current_time( 'mysql' ),
 			)
@@ -428,7 +428,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'             => '0',
 				'url'                  => 'https://www.zara.com/product',
 				'anchor_text'          => 'tank top',
-				'status'               => 'convertible',
+				'category'             => ALM_Install::CATEGORY_CANDIDATE,
 				'thumbnail_url'        => 'https://cdn.zara.com/still-the-right-photo.jpg',
 				'thumbnail_fetched_at' => current_time( 'mysql' ),
 			)
@@ -463,7 +463,8 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.a-dead-retailer.example/product',
 				'anchor_text' => 'boots',
-				'status'      => 'stale',
+				'category'    => ALM_Install::CATEGORY_NONAFFILIATE,
+				'modifier'    => ALM_Install::MODIFIER_DEAD,
 			)
 		);
 
@@ -499,7 +500,8 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.a-dead-retailer.example/different-product',
 				'anchor_text' => 'boots',
-				'status'      => 'stale',
+				'category'    => ALM_Install::CATEGORY_NONAFFILIATE,
+				'modifier'    => ALM_Install::MODIFIER_DEAD,
 			)
 		);
 
@@ -529,7 +531,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 				'location'    => '0',
 				'url'         => 'https://www.zara.com/product',
 				'anchor_text' => 'tank top',
-				'status'      => 'convertible',
+				'category'    => ALM_Install::CATEGORY_CANDIDATE,
 			)
 		);
 
@@ -545,8 +547,9 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 		global $wpdb;
 
 		$defaults = array(
-			'first_seen' => current_time( 'mysql' ),
-			'last_seen'  => current_time( 'mysql' ),
+			'classified_at' => current_time( 'mysql' ),
+			'first_seen'    => current_time( 'mysql' ),
+			'last_seen'     => current_time( 'mysql' ),
 		);
 
 		$wpdb->insert( ALM_Install::table_name(), array_merge( $defaults, $overrides ) );

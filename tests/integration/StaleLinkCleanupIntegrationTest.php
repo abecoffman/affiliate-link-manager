@@ -3,12 +3,18 @@
  * Integration tests for the quiet stale-link cleanup piggybacked onto
  * the existing daily housekeeping cron (alm_run_domain_recheck_cron()
  * in the main plugin file) -- deletes tracking rows for links that are
- * status=stale AND were never confirmed dead, once they've sat
- * unresolved past a retention window. Real $wpdb needed to prove the
- * DELETE's WHERE scoping is actually correct -- never touches a
- * confirmed-dead row (that's the real, visible Dead Links flow), a
- * recently-stale row still within its grace period, or anything that
- * isn't status=stale at all.
+ * category=nonaffiliate AND modifier=stale (never confirmed dead --
+ * those go through the real, visible Dead Links flow instead). Real
+ * $wpdb needed to prove the DELETE's WHERE scoping is actually correct
+ * -- never touches a confirmed-dead row (that's the real, visible Dead
+ * Links flow), a recently-stale row still within its grace period, or
+ * anything that isn't category=nonaffiliate+modifier=stale at all.
+ *
+ * Cutoff is based on classified_at (when a row actually became
+ * nonaffiliate+stale), not last_seen -- see
+ * alm_run_domain_recheck_cron()'s own docblock for why that's the more
+ * direct fact now that the two are no longer the same thing by
+ * construction.
  *
  * No domain-check/link-health candidates are ever inserted in these
  * tests, so alm_run_domain_recheck_cron()'s other two piggybacked jobs
@@ -45,16 +51,17 @@ class StaleLinkCleanupIntegrationTest extends WP_UnitTestCase {
 		global $wpdb;
 
 		$defaults = array(
-			'post_id'           => 1,
-			'provider'          => 'unclassified',
-			'adapter'           => 'post_content',
-			'location'          => (string) wp_rand(),
-			'url'               => 'https://example.com/product',
-			'anchor_text'       => 'link',
-			'status'            => ALM_Install::STATUS_STALE,
-			'first_seen'        => current_time( 'mysql' ),
-			'last_seen'         => current_time( 'mysql' ),
-			'dead_confirmed_at' => null,
+			'post_id'       => 1,
+			'provider'      => 'unclassified',
+			'adapter'       => 'post_content',
+			'location'      => (string) wp_rand(),
+			'url'           => 'https://example.com/product',
+			'anchor_text'   => 'link',
+			'category'      => ALM_Install::CATEGORY_NONAFFILIATE,
+			'modifier'      => ALM_Install::MODIFIER_STALE,
+			'classified_at' => current_time( 'mysql' ),
+			'first_seen'    => current_time( 'mysql' ),
+			'last_seen'     => current_time( 'mysql' ),
 		);
 
 		$wpdb->insert( ALM_Install::table_name(), array_merge( $defaults, $overrides ) );
@@ -62,24 +69,22 @@ class StaleLinkCleanupIntegrationTest extends WP_UnitTestCase {
 		return (int) $wpdb->insert_id;
 	}
 
-	public function test_deletes_a_long_stale_never_confirmed_dead_row_past_the_retention_window() {
+	public function test_deletes_a_long_stale_row_past_the_retention_window() {
 		$id = $this->insert_link(
 			array(
-				'status'    => ALM_Install::STATUS_STALE,
-				'last_seen' => gmdate( 'Y-m-d H:i:s', strtotime( '-90 days' ) ),
+				'classified_at' => gmdate( 'Y-m-d H:i:s', strtotime( '-10 days' ) ),
 			)
 		);
 
 		alm_run_domain_recheck_cron();
 
-		$this->assertNull( $this->get_row( $id ), 'Past the 60-day default retention window -- must be deleted.' );
+		$this->assertNull( $this->get_row( $id ), 'Past the 3-day default retention window -- must be deleted.' );
 	}
 
 	public function test_leaves_a_recently_stale_row_alone() {
 		$id = $this->insert_link(
 			array(
-				'status'    => ALM_Install::STATUS_STALE,
-				'last_seen' => gmdate( 'Y-m-d H:i:s', strtotime( '-5 days' ) ),
+				'classified_at' => gmdate( 'Y-m-d H:i:s', strtotime( '-1 day' ) ),
 			)
 		);
 
@@ -91,9 +96,8 @@ class StaleLinkCleanupIntegrationTest extends WP_UnitTestCase {
 	public function test_never_deletes_a_confirmed_dead_row_regardless_of_age() {
 		$id = $this->insert_link(
 			array(
-				'status'            => ALM_Install::STATUS_STALE,
-				'last_seen'         => gmdate( 'Y-m-d H:i:s', strtotime( '-400 days' ) ),
-				'dead_confirmed_at' => gmdate( 'Y-m-d H:i:s', strtotime( '-400 days' ) ),
+				'modifier'      => ALM_Install::MODIFIER_DEAD,
+				'classified_at' => gmdate( 'Y-m-d H:i:s', strtotime( '-400 days' ) ),
 			)
 		);
 
@@ -102,11 +106,12 @@ class StaleLinkCleanupIntegrationTest extends WP_UnitTestCase {
 		$this->assertNotNull( $this->get_row( $id ), 'A confirmed-dead row goes through the real, visible Dead Links flow -- this quiet cleanup must never touch it, no matter how old.' );
 	}
 
-	public function test_never_deletes_a_non_stale_row() {
+	public function test_never_deletes_a_candidate_row() {
 		$id = $this->insert_link(
 			array(
-				'status'    => ALM_Install::STATUS_CONVERTIBLE,
-				'last_seen' => gmdate( 'Y-m-d H:i:s', strtotime( '-400 days' ) ),
+				'category'      => ALM_Install::CATEGORY_CANDIDATE,
+				'modifier'      => null,
+				'classified_at' => gmdate( 'Y-m-d H:i:s', strtotime( '-400 days' ) ),
 			)
 		);
 
@@ -125,14 +130,13 @@ class StaleLinkCleanupIntegrationTest extends WP_UnitTestCase {
 
 		$id = $this->insert_link(
 			array(
-				'status'    => ALM_Install::STATUS_STALE,
-				'last_seen' => gmdate( 'Y-m-d H:i:s', strtotime( '-20 days' ) ),
+				'classified_at' => gmdate( 'Y-m-d H:i:s', strtotime( '-20 days' ) ),
 			)
 		);
 
 		alm_run_domain_recheck_cron();
 
-		$this->assertNull( $this->get_row( $id ), 'Past the filtered 10-day window -- must be deleted even though it would have survived the 60-day default.' );
+		$this->assertNull( $this->get_row( $id ), 'Past the filtered 10-day window -- must be deleted even though it would have survived a shorter default.' );
 	}
 
 	/**

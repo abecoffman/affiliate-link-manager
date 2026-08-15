@@ -281,9 +281,24 @@ class ALM_Scanner {
 	 * (WP_Query with post_status=publish naturally excludes trashed/
 	 * deleted posts, so those links go stale here too, for free) --
 	 * either way, the content changed since the last time this row was
-	 * confirmed. Ignored links are deliberately left alone: an admin
-	 * already decided that one was fine, so it shouldn't be able to
-	 * silently override that decision.
+	 * confirmed. A link that already carries any modifier (ignored,
+	 * dead, or already stale) is deliberately left alone -- ignored is
+	 * a sticky admin decision that shouldn't be able to silently
+	 * revert, and a confirmed-dead verdict is a stronger, more specific
+	 * fact than "just not found" that this sweep must never quietly
+	 * downgrade (today's status=stale conflation happened to protect
+	 * dead rows from this for free, since dead was always stale too --
+	 * modifier IS NULL is this method's explicit equivalent now that
+	 * dead/stale are distinct values).
+	 *
+	 * A swept row demotes all the way to nonaffiliate+stale, even if it
+	 * was `affiliate` (a real, converted link) or `candidate` a moment
+	 * ago -- a link no longer found in any post isn't really either of
+	 * those anymore, whatever it used to be, and this is what actually
+	 * makes it eligible for the retention cron's cleanup shortly after
+	 * (see alm_run_domain_recheck_cron()'s own docblock). A link that
+	 * comes back in a later scan is reclassified fresh by upsert_link()
+	 * above, same as any other rediscovery.
 	 *
 	 * @param string $scan_started_at MySQL datetime this scan run began.
 	 * @return int Number of rows that just transitioned to stale.
@@ -296,8 +311,10 @@ class ALM_Scanner {
 		global $wpdb;
 		$table = ALM_Install::table_name();
 
-		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; a bulk status-transition update, not a per-row query needing caching.
-		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET status = %s WHERE last_seen < %s AND status NOT IN (%s, %s)", ALM_Install::STATUS_STALE, $scan_started_at, ALM_Install::STATUS_STALE, ALM_Install::STATUS_IGNORED ) );
+		$sql    = "UPDATE {$table} SET category = %s, modifier = %s, classified_at = %s WHERE last_seen < %s AND modifier IS NULL"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$params = array( ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE, current_time( 'mysql' ), $scan_started_at );
+		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; a bulk transition update, not a per-row query needing caching.
+		$wpdb->query( $wpdb->prepare( $sql, $params ) );
 
 		return (int) $wpdb->rows_affected;
 	}
@@ -363,7 +380,7 @@ class ALM_Scanner {
 		$now   = current_time( 'mysql' );
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- {$table} is a table name (not user input, can't be a placeholder); the real user-supplied values are all passed through prepare() below.
-		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT id, status, dead_confirmed_at FROM {$table} WHERE post_id = %d AND adapter = %s AND location = %s", $post_id, $adapter_id, $link['location'] ), ARRAY_A );
+		$existing = $wpdb->get_row( $wpdb->prepare( "SELECT id, category, modifier FROM {$table} WHERE post_id = %d AND adapter = %s AND location = %s", $post_id, $adapter_id, $link['location'] ), ARRAY_A );
 
 		$data = array(
 			'post_id'     => $post_id,
@@ -375,40 +392,45 @@ class ALM_Scanner {
 			'last_seen'   => $now,
 		);
 
-		$classified_status = ALM_Install::STATUS_ACTIVE;
+		$classified_category = ALM_Install::CATEGORY_AFFILIATE;
 		if ( 'unclassified' === $provider_id ) {
 			// Not matched by any real provider -- but that's not the same
 			// as "noise". A raw retailer link nobody has wrapped yet is
 			// exactly what this plugin exists to surface; a link back to
 			// this site's own nav or an Instagram icon is not. See
 			// ALM_Candidate_Classifier's own docblock for the reasoning.
-			$classified_status = $this->classifier->is_candidate( $link['url'] )
-				? ALM_Install::STATUS_CONVERTIBLE
-				: ALM_Install::STATUS_UNCLASSIFIED;
+			$classified_category = $this->classifier->is_candidate( $link['url'] )
+				? ALM_Install::CATEGORY_CANDIDATE
+				: ALM_Install::CATEGORY_NONAFFILIATE;
 		}
 
 		// Ignored is a deliberate, sticky admin decision -- re-discovering
 		// the same link on a later scan (including one that had gone
-		// stale and come back) shouldn't silently un-ignore it. Every
-		// other status is safe to recompute fresh on every sighting.
-		if ( ! $existing || ALM_Install::STATUS_IGNORED !== $existing['status'] ) {
-			$data['status'] = $classified_status;
-		}
+		// stale/dead and come back) shouldn't silently un-ignore it.
+		// Every other category/modifier combination is safe to recompute
+		// fresh on every sighting -- including clearing a previous
+		// dead/stale modifier back to NULL, since being rediscovered
+		// here (this method only ever runs for a link an adapter *did*
+		// find) is itself proof it's neither of those anymore. See
+		// ALM_Install's own class docblock for the full category/
+		// modifier model.
+		if ( ! $existing || ALM_Install::MODIFIER_IGNORED !== $existing['modifier'] ) {
+			$data['category'] = $classified_category;
+			$data['modifier'] = null;
 
-		// A previously-stale row being rediscovered here is, by
-		// definition, moving to a non-stale status (this method never
-		// assigns STATUS_STALE itself -- only sweep_stale_links() does)
-		// -- any dead_confirmed_at verdict from before no longer applies
-		// and must not silently carry forward onto whatever this link's
-		// status becomes now. See ALM_Install::create_table()'s docblock.
-		if ( $existing && ALM_Install::STATUS_STALE === $existing['status'] && ! empty( $existing['dead_confirmed_at'] ) ) {
-			$data['dead_confirmed_at'] = null;
+			// classified_at means "the last time category/modifier
+			// actually changed", not "the last time this row was
+			// touched" -- an already-active link rediscovered on every
+			// scan with nothing different about it shouldn't look like
+			// it was just freshly reclassified.
+			if ( ! $existing || $existing['category'] !== $classified_category || null !== $existing['modifier'] ) {
+				$data['classified_at'] = $now;
+			}
 		}
 
 		if ( $existing ) {
 			$wpdb->update( $table, $data, array( 'id' => $existing['id'] ) );
 		} else {
-			$data['status']     = $classified_status;
 			$data['first_seen'] = $now;
 			$wpdb->insert( $table, $data );
 		}

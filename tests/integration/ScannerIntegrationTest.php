@@ -118,7 +118,7 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 
 		$rows = $this->get_links_for_post( $post_id );
 		$this->assertCount( 1, $rows );
-		$this->assertSame( 'active', $rows[0]['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $rows[0]['category'] );
 
 		// Simulate "this link was found a while ago" by back-dating
 		// last_seen directly, rather than a real sleep() between two
@@ -141,7 +141,8 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 
 		$rows = $this->get_links_for_post( $post_id );
 		$this->assertCount( 1, $rows, 'The row should persist (not be deleted) -- just marked stale.' );
-		$this->assertSame( 'stale', $rows[0]['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_NONAFFILIATE, $rows[0]['category'], 'A swept link demotes all the way to nonaffiliate, even though it was a real affiliate link a moment ago.' );
+		$this->assertSame( ALM_Install::MODIFIER_STALE, $rows[0]['modifier'] );
 	}
 
 	public function test_stale_sweep_never_touches_ignored_links() {
@@ -159,8 +160,10 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$wpdb->update(
 			ALM_Install::table_name(),
 			array(
-				'status'    => 'ignored',
-				'last_seen' => '2020-01-01 00:00:00',
+				'category'      => ALM_Install::CATEGORY_NONAFFILIATE,
+				'modifier'      => ALM_Install::MODIFIER_IGNORED,
+				'classified_at' => current_time( 'mysql' ),
+				'last_seen'     => '2020-01-01 00:00:00',
 			),
 			array( 'id' => $rows[0]['id'] )
 		);
@@ -174,7 +177,7 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->scan_batch( 0, 10 );
 
 		$rows = $this->get_links_for_post( $post_id );
-		$this->assertSame( 'ignored', $rows[0]['status'], 'An ignored link must not be swept to stale even once no longer found.' );
+		$this->assertSame( ALM_Install::MODIFIER_IGNORED, $rows[0]['modifier'], 'An ignored link must not be swept to stale even once no longer found.' );
 	}
 
 	public function test_ignored_status_is_not_reverted_when_the_link_is_rediscovered() {
@@ -189,19 +192,27 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$rows = $this->get_links_for_post( $post_id );
 
 		global $wpdb;
-		$wpdb->update( ALM_Install::table_name(), array( 'status' => 'ignored' ), array( 'id' => $rows[0]['id'] ) );
+		$wpdb->update(
+			ALM_Install::table_name(),
+			array(
+				'category'      => ALM_Install::CATEGORY_NONAFFILIATE,
+				'modifier'      => ALM_Install::MODIFIER_IGNORED,
+				'classified_at' => current_time( 'mysql' ),
+			),
+			array( 'id' => $rows[0]['id'] )
+		);
 
 		// Re-scan with the link still present in the post -- ignored must stick.
 		$this->scanner->scan_batch( 0, 10 );
 
 		$rows = $this->get_links_for_post( $post_id );
-		$this->assertSame( 'ignored', $rows[0]['status'] );
+		$this->assertSame( ALM_Install::MODIFIER_IGNORED, $rows[0]['modifier'] );
 	}
 
 	/**
-	 * @covers ALM_Install
+	 * @covers ALM_Scanner
 	 */
-	public function test_dead_confirmed_at_is_cleared_when_a_previously_stale_link_is_rediscovered() {
+	public function test_modifier_is_cleared_when_a_previously_stale_link_is_rediscovered() {
 		$post_id = self::factory()->post->create(
 			array(
 				'post_status'  => 'publish',
@@ -213,29 +224,29 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 		$rows = $this->get_links_for_post( $post_id );
 
 		// Simulate a prior ALM_Link_Health_Scanner verdict: the link
-		// briefly went stale-and-confirmed-dead (e.g. it was removed
-		// from the post, swept stale, then health-checked) before
-		// being restored to the post and rediscovered here.
+		// briefly went nonaffiliate-and-confirmed-dead (e.g. it was
+		// removed from the post, swept stale, then health-checked)
+		// before being restored to the post and rediscovered here.
 		global $wpdb;
 		$wpdb->update(
 			ALM_Install::table_name(),
 			array(
-				'status'            => ALM_Install::STATUS_STALE,
-				'dead_confirmed_at' => current_time( 'mysql' ),
+				'category'      => ALM_Install::CATEGORY_NONAFFILIATE,
+				'modifier'      => ALM_Install::MODIFIER_DEAD,
+				'classified_at' => current_time( 'mysql' ),
 			),
 			array( 'id' => $rows[0]['id'] )
 		);
 
 		// Re-scan with the link still present -- it is a real
-		// rediscovery, so upsert_link() must not leave the stale
-		// dead_confirmed_at verdict behind now that the row is being
-		// reclassified to something else. See ALM_Install::create_table()'s
-		// docblock and ALM_Scanner::upsert_link().
+		// rediscovery, so upsert_link() must not leave the stale dead
+		// modifier behind now that the row is being reclassified to
+		// something else. See ALM_Scanner::upsert_link().
 		$this->scanner->scan_batch( 0, 10 );
 
 		$rows = $this->get_links_for_post( $post_id );
-		$this->assertNotSame( ALM_Install::STATUS_STALE, $rows[0]['status'] );
-		$this->assertNull( $rows[0]['dead_confirmed_at'] );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $rows[0]['category'], 'A real, recognized network link found again must be reclassified all the way back to affiliate.' );
+		$this->assertNull( $rows[0]['modifier'] );
 	}
 
 	/**
@@ -252,9 +263,9 @@ class ScannerIntegrationTest extends WP_UnitTestCase {
 
 		$this->assertTrue( $this->scanner->scan_batch( 0, 10 )['done'] );
 
-		$by_url = wp_list_pluck( $this->get_links_for_post( $post_id ), 'status', 'url' );
-		$this->assertSame( 'convertible', $by_url['https://www.a-real-retailer.example/product'], 'An unrecognized retailer link is a real candidate.' );
-		$this->assertSame( 'unclassified', $by_url['https://www.instagram.com/honestlywtf'], 'A social-platform link is noise, not a candidate.' );
+		$by_url = wp_list_pluck( $this->get_links_for_post( $post_id ), 'category', 'url' );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $by_url['https://www.a-real-retailer.example/product'], 'An unrecognized retailer link is a real candidate.' );
+		$this->assertSame( ALM_Install::CATEGORY_NONAFFILIATE, $by_url['https://www.instagram.com/honestlywtf'], 'A social-platform link is noise, not a candidate.' );
 	}
 
 	public function test_scan_records_a_delta_of_new_and_now_stale_links_for_the_dashboard() {

@@ -153,13 +153,14 @@ class NetworkSignalScannerIntegrationTest extends WP_UnitTestCase {
 		global $wpdb;
 
 		$defaults = array(
-			'post_id'     => 1,
-			'adapter'     => 'post_content',
-			'location'    => '0',
-			'anchor_text' => 'link',
-			'status'      => 'convertible',
-			'first_seen'  => current_time( 'mysql' ),
-			'last_seen'   => current_time( 'mysql' ),
+			'post_id'       => 1,
+			'adapter'       => 'post_content',
+			'location'      => '0',
+			'anchor_text'   => 'link',
+			'category'      => ALM_Install::CATEGORY_CANDIDATE,
+			'classified_at' => current_time( 'mysql' ),
+			'first_seen'    => current_time( 'mysql' ),
+			'last_seen'     => current_time( 'mysql' ),
 		);
 
 		$wpdb->insert( ALM_Install::table_name(), array_merge( $defaults, $overrides ) );

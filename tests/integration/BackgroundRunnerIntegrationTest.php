@@ -52,25 +52,25 @@ class BackgroundRunnerIntegrationTest extends WP_UnitTestCase {
 
 	/**
 	 * @param string $url
-	 * @param string $status
 	 * @return int Inserted row id.
 	 */
-	private function insert_link( $url, $status = ALM_Install::STATUS_CONVERTIBLE ) {
+	private function insert_link( $url ) {
 		global $wpdb;
 		$now = current_time( 'mysql' );
 
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => 1,
-				'provider'    => 'unclassified',
-				'adapter'     => 'post_content',
-				'location'    => (string) wp_rand(),
-				'url'         => $url,
-				'anchor_text' => 'link',
-				'status'      => $status,
-				'first_seen'  => $now,
-				'last_seen'   => $now,
+				'post_id'       => 1,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => (string) wp_rand(),
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => ALM_Install::CATEGORY_CANDIDATE,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -437,15 +437,16 @@ class BackgroundRunnerIntegrationTest extends WP_UnitTestCase {
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => $untouched_post,
-				'provider'    => 'unclassified',
-				'adapter'     => 'post_content',
-				'location'    => '0',
-				'url'         => 'https://untouched-retailer.example.com/product',
-				'anchor_text' => 'bag',
-				'status'      => ALM_Install::STATUS_CONVERTIBLE,
-				'first_seen'  => '2020-01-01 00:00:00',
-				'last_seen'   => '2020-01-01 00:00:00',
+				'post_id'       => $untouched_post,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => '0',
+				'url'           => 'https://untouched-retailer.example.com/product',
+				'anchor_text'   => 'bag',
+				'category'      => ALM_Install::CATEGORY_CANDIDATE,
+				'classified_at' => '2020-01-01 00:00:00',
+				'first_seen'    => '2020-01-01 00:00:00',
+				'last_seen'     => '2020-01-01 00:00:00',
 			)
 		);
 
@@ -461,8 +462,8 @@ class BackgroundRunnerIntegrationTest extends WP_UnitTestCase {
 
 		$table = ALM_Install::table_name();
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input.
-		$status = $wpdb->get_var( $wpdb->prepare( "SELECT status FROM {$table} WHERE post_id = %d", $untouched_post ) );
-		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $status, 'An incremental run must never sweep links in posts it did not cover.' );
+		$category = $wpdb->get_var( $wpdb->prepare( "SELECT category FROM {$table} WHERE post_id = %d", $untouched_post ) );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $category, 'An incremental run must never sweep links in posts it did not cover.' );
 	}
 
 	public function test_scan_incremental_batch_checkpoints_to_when_the_run_started_not_when_it_finished() {

@@ -65,8 +65,8 @@ class ALM_Domain_Scanner {
 		$domains_table = ALM_Install::domains_table_name();
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table names, not user input; real value bound via prepare() below.
-		$sql  = "SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(url, '/', 3), '://', -1) as host, MIN(url) as sample_url FROM {$links_table} WHERE status = %s GROUP BY host";
-		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ALM_Install::STATUS_CONVERTIBLE ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$sql  = "SELECT SUBSTRING_INDEX(SUBSTRING_INDEX(url, '/', 3), '://', -1) as host, MIN(url) as sample_url FROM {$links_table} WHERE category = %s GROUP BY host";
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ALM_Install::CATEGORY_CANDIDATE ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
 		$now = current_time( 'mysql' );
 
@@ -242,10 +242,13 @@ class ALM_Domain_Scanner {
 
 		// Ignored is a deliberate, sticky admin decision (see
 		// ALM_Scanner::upsert_link()) -- a real content verdict doesn't
-		// get to override that any more than a later scan does.
+		// get to override that any more than a later scan does. Only
+		// candidate or plain (modifier IS NULL) nonaffiliate rows are
+		// eligible -- a dead/stale nonaffiliate row has already moved
+		// on to a different question than "is this domain a shop".
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; real values bound via prepare() below.
-		$sql  = "SELECT id, url FROM {$links_table} WHERE status IN (%s, %s) AND SUBSTRING_INDEX(SUBSTRING_INDEX(url, '/', 3), '://', -1) = %s";
-		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_UNCLASSIFIED, $domain ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$sql  = "SELECT id, url, category FROM {$links_table} WHERE ( category = %s OR ( category = %s AND modifier IS NULL ) ) AND SUBSTRING_INDEX(SUBSTRING_INDEX(url, '/', 3), '://', -1) = %s";
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ALM_Install::CATEGORY_CANDIDATE, ALM_Install::CATEGORY_NONAFFILIATE, $domain ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
 		foreach ( (array) $rows as $row ) {
 			// is_candidate() still applies the structural checks (a
@@ -253,11 +256,16 @@ class ALM_Domain_Scanner {
 			// correctly non-candidate) -- only the domain-identity
 			// question itself is answered by the real verdict here
 			// instead of the static denylist guess.
-			$new_status = $this->classifier->is_candidate( $row['url'], $is_shop )
-				? ALM_Install::STATUS_CONVERTIBLE
-				: ALM_Install::STATUS_UNCLASSIFIED;
+			$new_category = $this->classifier->is_candidate( $row['url'], $is_shop )
+				? ALM_Install::CATEGORY_CANDIDATE
+				: ALM_Install::CATEGORY_NONAFFILIATE;
 
-			$wpdb->update( $links_table, array( 'status' => $new_status ), array( 'id' => $row['id'] ) );
+			$data = array( 'category' => $new_category );
+			if ( $new_category !== $row['category'] ) {
+				$data['classified_at'] = current_time( 'mysql' );
+			}
+
+			$wpdb->update( $links_table, $data, array( 'id' => $row['id'] ) );
 		}
 	}
 

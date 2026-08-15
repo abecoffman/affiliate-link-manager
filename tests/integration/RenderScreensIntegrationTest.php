@@ -63,16 +63,17 @@ class RenderScreensIntegrationTest extends WP_UnitTestCase {
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'           => 1,
-				'provider'          => 'unclassified',
-				'adapter'           => 'post_content',
-				'location'          => '0',
-				'url'               => 'https://confirmed-dead.example.com/product',
-				'anchor_text'       => 'link',
-				'status'            => ALM_Install::STATUS_STALE,
-				'first_seen'        => current_time( 'mysql' ),
-				'last_seen'         => current_time( 'mysql' ),
-				'dead_confirmed_at' => current_time( 'mysql' ),
+				'post_id'       => 1,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => '0',
+				'url'           => 'https://confirmed-dead.example.com/product',
+				'anchor_text'   => 'link',
+				'category'      => ALM_Install::CATEGORY_NONAFFILIATE,
+				'modifier'      => ALM_Install::MODIFIER_DEAD,
+				'classified_at' => current_time( 'mysql' ),
+				'first_seen'    => current_time( 'mysql' ),
+				'last_seen'     => current_time( 'mysql' ),
 			)
 		);
 

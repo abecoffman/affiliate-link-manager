@@ -44,30 +44,31 @@ class RemoveLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 	}
 
 	/**
-	 * @param string $url
-	 * @param string $status
-	 * @param string|null $dead_confirmed_at
-	 * @param int    $post_id
-	 * @param string $location
+	 * @param string      $url
+	 * @param string      $category
+	 * @param string|null $modifier
+	 * @param int         $post_id
+	 * @param string      $location
 	 * @return int
 	 */
-	private function insert_link( $url, $status, $dead_confirmed_at, $post_id, $location ) {
+	private function insert_link( $url, $category, $modifier, $post_id, $location ) {
 		global $wpdb;
 		$now = current_time( 'mysql' );
 
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'           => $post_id,
-				'provider'          => 'unclassified',
-				'adapter'           => 'post_content',
-				'location'          => $location,
-				'url'               => $url,
-				'anchor_text'       => 'link',
-				'status'            => $status,
-				'first_seen'        => $now,
-				'last_seen'         => $now,
-				'dead_confirmed_at' => $dead_confirmed_at,
+				'post_id'       => $post_id,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => $location,
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => $category,
+				'modifier'      => $modifier,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -82,7 +83,7 @@ class RemoveLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 			)
 		);
 
-		$id = $this->insert_link( 'https://confirmed-dead.example.com/product', ALM_Install::STATUS_STALE, current_time( 'mysql' ), $post_id, '0' );
+		$id = $this->insert_link( 'https://confirmed-dead.example.com/product', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD, $post_id, '0' );
 
 		$_POST['id'] = $id;
 
@@ -98,9 +99,9 @@ class RemoveLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 
 	/**
 	 * The real bug: a merely not-rediscovered, never-confirmed-dead
-	 * link (status=stale, dead_confirmed_at NULL) must be rejected,
-	 * even though the old code's check (status===stale alone) would
-	 * have let it through.
+	 * link (nonaffiliate/stale, not dead) must be rejected, even
+	 * though the old code's check (status===stale alone) would have
+	 * let it through.
 	 */
 	public function test_a_merely_stale_never_confirmed_dead_link_is_rejected() {
 		$post_id = self::factory()->post->create(
@@ -110,7 +111,7 @@ class RemoveLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 			)
 		);
 
-		$id = $this->insert_link( 'https://merely-stale.example.com/product', ALM_Install::STATUS_STALE, null, $post_id, '0' );
+		$id = $this->insert_link( 'https://merely-stale.example.com/product', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE, $post_id, '0' );
 
 		$_POST['id'] = $id;
 
@@ -142,7 +143,7 @@ class RemoveLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 			)
 		);
 
-		$id = $this->insert_link( 'https://still-a-candidate.example.com/product', ALM_Install::STATUS_CONVERTIBLE, null, $post_id, '0' );
+		$id = $this->insert_link( 'https://still-a-candidate.example.com/product', ALM_Install::CATEGORY_CANDIDATE, null, $post_id, '0' );
 
 		$_POST['id'] = $id;
 

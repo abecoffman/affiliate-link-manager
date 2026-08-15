@@ -6,15 +6,15 @@
  * true here since several candidates often share one retailer domain,
  * a real rate-limiting risk already found live once this session).
  *
- * Deliberately scoped to status=convertible only -- directly the
+ * Deliberately scoped to category=candidate only -- directly the
  * "is this actually a good candidate" question this class exists to
- * answer. Not status=active: an already-converted, already-earning
- * link is a higher-stakes thing to auto-touch, out of scope here.
- * Not already-status=stale: no auto-recovery attempt -- if a later
- * full scan rediscovers the same dead link in fresh post content it
- * naturally comes back as a Candidate, and the next health-check batch
- * simply marks it stale again, a stable self-correcting cycle that
- * needs no special-casing.
+ * answer. Not category=affiliate: an already-converted, already-earning
+ * link is a higher-stakes thing to auto-touch, out of scope here. Not
+ * an already-nonaffiliate row (stale or dead): no auto-recovery
+ * attempt -- if a later full scan rediscovers the same dead link in
+ * fresh post content it naturally comes back as a Candidate, and the
+ * next health-check batch simply marks it dead again, a stable
+ * self-correcting cycle that needs no special-casing.
  *
  * @package ALM
  */
@@ -49,9 +49,9 @@ class ALM_Link_Health_Scanner {
 		global $wpdb;
 		$table = ALM_Install::table_name();
 
-		$sql = "SELECT COUNT(*) FROM {$table} WHERE status = %s AND (health_checked_at IS NULL OR health_checked_at < %s)"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE category = %s AND (health_checked_at IS NULL OR health_checked_at < %s)"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 
-		return (int) $wpdb->get_var( $wpdb->prepare( $sql, ALM_Install::STATUS_CONVERTIBLE, $this->recheck_cutoff() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
+		return (int) $wpdb->get_var( $wpdb->prepare( $sql, ALM_Install::CATEGORY_CANDIDATE, $this->recheck_cutoff() ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
 	}
 
 	/**
@@ -71,8 +71,8 @@ class ALM_Link_Health_Scanner {
 		$table = ALM_Install::table_name();
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; real values bound via prepare() below.
-		$sql  = "SELECT id, url FROM {$table} WHERE status = %s AND (health_checked_at IS NULL OR health_checked_at < %s) ORDER BY health_checked_at IS NULL DESC, health_checked_at ASC LIMIT %d";
-		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ALM_Install::STATUS_CONVERTIBLE, $this->recheck_cutoff(), $batch_size ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$sql  = "SELECT id, url FROM {$table} WHERE category = %s AND (health_checked_at IS NULL OR health_checked_at < %s) ORDER BY health_checked_at IS NULL DESC, health_checked_at ASC LIMIT %d";
+		$rows = $wpdb->get_results( $wpdb->prepare( $sql, ALM_Install::CATEGORY_CANDIDATE, $this->recheck_cutoff(), $batch_size ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
 		foreach ( (array) $rows as $row ) {
 			$this->check_one_link( (int) $row['id'], $row['url'] );
@@ -108,17 +108,14 @@ class ALM_Link_Health_Scanner {
 
 		// Confirmed dead -- moved out of the Candidate list the same way
 		// ALM_Shortener_Scanner already moves a confirmed-dead shortlink
-		// to stale, so it stops reading as a live opportunity.
-		// dead_confirmed_at is the one thing that distinguishes this row
-		// from an ordinary "not rediscovered by a scan" stale link --
-		// see ALM_Install::create_table()'s docblock for why status=stale
-		// alone can't carry that distinction. Alive or merely
-		// inconclusive (a 403, a timeout, ...) both leave status (and
-		// dead_confirmed_at) untouched -- "still don't know" beats a
-		// wrong guess either way.
+		// to nonaffiliate+dead, so it stops reading as a live
+		// opportunity. Alive or merely inconclusive (a 403, a timeout,
+		// ...) both leave category/modifier untouched -- "still don't
+		// know" beats a wrong guess either way.
 		if ( $result['dead'] ) {
-			$data['status']            = ALM_Install::STATUS_STALE;
-			$data['dead_confirmed_at'] = current_time( 'mysql' );
+			$data['category']      = ALM_Install::CATEGORY_NONAFFILIATE;
+			$data['modifier']      = ALM_Install::MODIFIER_DEAD;
+			$data['classified_at'] = current_time( 'mysql' );
 		}
 
 		$wpdb->update( $table, $data, array( 'id' => $id ) );
@@ -144,11 +141,15 @@ class ALM_Link_Health_Scanner {
 			global $wpdb;
 			$table = ALM_Install::table_name();
 
-			$sql  = "SELECT status, COUNT(*) as total FROM {$table} WHERE health_checked_at >= %s GROUP BY status"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+			// Grouped by modifier alone (not category too) -- every row
+			// this exact call touches was written by check_one_link()
+			// moments ago, which only ever leaves modifier NULL (still
+			// fine/inconclusive) or sets it to 'dead', nothing else.
+			$sql  = "SELECT modifier, COUNT(*) as total FROM {$table} WHERE health_checked_at >= %s GROUP BY modifier"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
 			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $started_at ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
 
 			foreach ( (array) $rows as $row ) {
-				if ( ALM_Install::STATUS_STALE === $row['status'] ) {
+				if ( ALM_Install::MODIFIER_DEAD === $row['modifier'] ) {
 					$confirmed_dead = (int) $row['total'];
 				} else {
 					$still_fine += (int) $row['total'];

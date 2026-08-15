@@ -12,24 +12,35 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ALM_Install {
 
 	const DB_VERSION_OPTION = 'alm_db_version';
-	const DB_VERSION        = '1.6.0';
+	const DB_VERSION        = '1.7.0';
 
 	/**
-	 * Real, documented status values -- the column itself is a plain
-	 * VARCHAR (dbDelta can't express a real ENUM diff-safely), these
-	 * constants are the single source of truth for what's valid.
+	 * Real, documented values -- both columns are plain VARCHARs (dbDelta
+	 * can't express a real ENUM diff-safely), these constants are the
+	 * single source of truth for what's valid.
 	 *
-	 * `stale` and `ignored` are deliberately distinct: stale means the
-	 * scanner didn't see this link the last time it ran (the content
-	 * changed); ignored means an admin explicitly dismissed it. Without
-	 * that distinction, a link an admin already reviewed and accepted
-	 * would keep re-flagging on every scan forever.
+	 * Two dimensions, not one flat enum: `category` is what a link
+	 * fundamentally is; `modifier` is only ever set when
+	 * `category = CATEGORY_NONAFFILIATE`, exactly one at a time --
+	 * `ignored` (an admin explicitly dismissed it -- sticky, a later
+	 * scan rediscovering the same link must never silently un-ignore
+	 * it), `dead` (the health checker or shortener resolver confirmed
+	 * the destination is actually broken), or `stale` (a full scan
+	 * simply didn't find it in post content anymore -- including a
+	 * link that used to be `active`/`candidate`, which demotes all the
+	 * way to nonaffiliate+stale rather than keeping its old category
+	 * while secretly not being found; see sweep_stale_links()). `NULL`
+	 * modifier + `nonaffiliate` category is a plain, ordinary non-
+	 * affiliate link -- nav, social, an editorial credit -- currently
+	 * present, nothing to review.
 	 */
-	const STATUS_ACTIVE       = 'active';
-	const STATUS_CONVERTIBLE  = 'convertible';
-	const STATUS_UNCLASSIFIED = 'unclassified';
-	const STATUS_STALE        = 'stale';
-	const STATUS_IGNORED      = 'ignored';
+	const CATEGORY_AFFILIATE    = 'affiliate';
+	const CATEGORY_CANDIDATE    = 'candidate';
+	const CATEGORY_NONAFFILIATE = 'nonaffiliate';
+
+	const MODIFIER_IGNORED = 'ignored';
+	const MODIFIER_DEAD    = 'dead';
+	const MODIFIER_STALE   = 'stale';
 
 	/**
 	 * Runs on plugin activation.
@@ -62,14 +73,24 @@ class ALM_Install {
 
 		$links_table           = self::table_name();
 		$show_columns_sql      = "SHOW COLUMNS FROM {$links_table} LIKE %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; the real value (a fixed column name) is bound via prepare() below.
-		$resolved_url_exists   = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'resolved_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
-		$thumbnail_url_exists  = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'thumbnail_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
-		$health_checked_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'health_checked_at' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
-		$dead_confirmed_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'dead_confirmed_at' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+		$resolved_url_exists   = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'resolved_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+		$thumbnail_url_exists  = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'thumbnail_url' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+		$health_checked_exists = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'health_checked_at' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+		$category_exists       = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'category' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+		$status_exists         = (bool) $wpdb->get_var( $wpdb->prepare( $show_columns_sql, 'status' ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
 
-		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists || ! $resolved_url_exists || ! $thumbnail_url_exists || ! $health_checked_exists || ! $dead_confirmed_exists ) {
+		if ( get_option( self::DB_VERSION_OPTION ) !== self::DB_VERSION || ! $domains_exists || ! $resolved_url_exists || ! $thumbnail_url_exists || ! $health_checked_exists || ! $category_exists ) {
 			self::create_table();
 			update_option( self::DB_VERSION_OPTION, self::DB_VERSION );
+		}
+
+		// The old `status`/`dismissed_at`/`dead_confirmed_at` columns
+		// only still exist on a site that hasn't migrated yet -- a fresh
+		// install's create_table() above never creates them at all, so
+		// this is naturally a one-time, self-healing no-op everywhere
+		// else, same reasoning as the rest of this method.
+		if ( $status_exists ) {
+			self::migrate_status_to_category();
 		}
 
 		// register_activation_hook() only ever fires on an actual
@@ -109,11 +130,7 @@ class ALM_Install {
 	 * Single source of truth for "how many links are confirmed dead" --
 	 * used by both ALM_Links_List_Table's Dead Links tab count and the
 	 * Dashboard's own stat tile, so the two can never quietly drift
-	 * apart the way two separate near-identical queries risked. Not a
-	 * real ALM_Install::STATUS_* value on its own -- "confirmed dead"
-	 * is the status=stale AND dead_confirmed_at IS NOT NULL slice; see
-	 * create_table()'s own docblock for why status=stale alone can't
-	 * carry this distinction.
+	 * apart the way two separate near-identical queries risked.
 	 *
 	 * @return int
 	 */
@@ -121,9 +138,9 @@ class ALM_Install {
 		global $wpdb;
 		$table = self::table_name();
 
-		$sql = "SELECT COUNT(*) FROM {$table} WHERE status = %s AND dead_confirmed_at IS NOT NULL"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE category = %s AND modifier = %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
 		// phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
-		return (int) $wpdb->get_var( $wpdb->prepare( $sql, self::STATUS_STALE ) );
+		return (int) $wpdb->get_var( $wpdb->prepare( $sql, self::CATEGORY_NONAFFILIATE, self::MODIFIER_DEAD ) );
 	}
 
 	/**
@@ -157,35 +174,33 @@ class ALM_Install {
 		//
 		// resolved_url/resolved_at (see ALM_Shortener_Resolver/_Scanner),
 		// thumbnail_url/thumbnail_fetched_at (see ALM_Thumbnail_Fetcher),
-		// health_checked_at (see ALM_Link_Health_Checker/_Scanner), and
-		// dead_confirmed_at all live on the link row itself, not a
-		// shared cache table like wp_alm_domains below -- unlike the
-		// domain-content-check cache (one row per *domain*, shared by
-		// every link on it), a shortener's real destination, a product's
-		// photo, and a specific link's own reachability are all unique
-		// per link, not per domain (the same domain can have one dead
-		// product page and ten live ones).
+		// and health_checked_at (see ALM_Link_Health_Checker/_Scanner)
+		// all live on the link row itself, not a shared cache table like
+		// wp_alm_domains below -- unlike the domain-content-check cache
+		// (one row per *domain*, shared by every link on it), a
+		// shortener's real destination, a product's photo, and a
+		// specific link's own reachability are all unique per link, not
+		// per domain (the same domain can have one dead product page
+		// and ten live ones).
 		//
-		// dead_confirmed_at specifically: distinct from status=stale
-		// itself, which is overloaded to mean two different things --
-		// "the scanner didn't rediscover this in post content" (the
-		// original meaning) and "the health checker confirmed the
-		// destination is actually dead" (this column). Set only by
-		// ALM_Link_Health_Scanner on a confirmed-dead result, cleared by
-		// ALM_Scanner/ALM_Shortener_Scanner the moment a previously-stale
-		// row is reclassified to anything else -- see their own
-		// docblocks. Lets ALM_Links_List_Table's "Dead" tab show only
-		// links actually worth removing, not every stale row.
+		// category/modifier/classified_at replace the old status column
+		// (plus the dismissed_at/dead_confirmed_at side-columns that
+		// used to disambiguate it) -- see ALM_Install's own class
+		// docblock-level constants for the full model. classified_at is
+		// nullable, not NOT NULL, for the same reason every other
+		// app-populated timestamp column here is (resolved_at,
+		// dismissed_at used to be, etc.): a column added via ALTER TABLE
+		// to a table that may already have rows needs to be safe to add
+		// without a backfill happening in the same statement. Every
+		// write path sets a real value going forward; migrate_status_to_
+		// category() backfills it once for pre-existing rows.
 		//
-		// last_verified below is vestigial: predates health_checked_at/
-		// dead_confirmed_at, which are what the health-check flow
-		// actually reads/writes today (see ALM_Link_Health_Scanner).
-		// Never read or written anywhere in this codebase. Left in
-		// place rather than dropped via a migration for a column
-		// nobody's using -- candidate for removal in a future schema-
-		// touching round. (Deliberately not a SQL comment inline below
-		// -- dbDelta() parses this string with its own regex and isn't
-		// guaranteed to tolerate one.)
+		// last_verified was vestigial (predated health_checked_at/the old
+		// dead_confirmed_at, never read or written anywhere in this
+		// codebase) and is dropped in this same migration rather than
+		// carried through yet another round. (Deliberately not a SQL
+		// comment inline below -- dbDelta() parses this string with its
+		// own regex and isn't guaranteed to tolerate one.)
 		$sql = "CREATE TABLE {$table_name} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			post_id BIGINT UNSIGNED NOT NULL,
@@ -194,21 +209,20 @@ class ALM_Install {
 			location VARCHAR(191) NOT NULL DEFAULT '',
 			url TEXT NOT NULL,
 			anchor_text TEXT NOT NULL,
-			status VARCHAR(20) NOT NULL DEFAULT 'active',
+			category VARCHAR(20) NOT NULL DEFAULT 'nonaffiliate',
+			modifier VARCHAR(20) NULL DEFAULT NULL,
+			classified_at DATETIME NULL DEFAULT NULL,
 			first_seen DATETIME NOT NULL,
 			last_seen DATETIME NOT NULL,
-			last_verified DATETIME NULL DEFAULT NULL,
-			dismissed_at DATETIME NULL DEFAULT NULL,
 			resolved_url TEXT NULL,
 			resolved_at DATETIME NULL DEFAULT NULL,
 			thumbnail_url TEXT NULL,
 			thumbnail_fetched_at DATETIME NULL DEFAULT NULL,
 			health_checked_at DATETIME NULL DEFAULT NULL,
-			dead_confirmed_at DATETIME NULL DEFAULT NULL,
 			PRIMARY KEY  (id),
 			KEY post_id (post_id),
 			KEY provider (provider),
-			KEY status (status),
+			KEY category_modifier (category, modifier),
 			UNIQUE KEY natural_key (post_id, adapter, location(100))
 		) {$charset_collate};";
 
@@ -235,6 +249,82 @@ class ALM_Install {
 		) {$charset_collate};";
 
 		dbDelta( $domains_sql );
+	}
+
+	/**
+	 * One-time backfill from the old status/dismissed_at/dead_confirmed_at
+	 * shape to category/modifier/classified_at, then drops the old
+	 * columns. Only ever called once per site -- maybe_upgrade() only
+	 * calls this when the `status` column is still actually present,
+	 * which create_table() above never (re)creates, so this is a
+	 * natural no-op everywhere except a site upgrading from before this
+	 * version.
+	 *
+	 * Six cases, matching the old status/dead_confirmed_at combinations
+	 * exactly:
+	 * - active                                  -> affiliate    / NULL   / first_seen (no better signal exists)
+	 * - convertible                              -> candidate    / NULL   / first_seen
+	 * - unclassified                             -> nonaffiliate / NULL   / first_seen
+	 * - ignored                                  -> nonaffiliate / ignored/ dismissed_at
+	 * - stale, dead_confirmed_at set              -> nonaffiliate / dead   / dead_confirmed_at
+	 * - stale, dead_confirmed_at NULL             -> nonaffiliate / stale  / last_seen (closest real proxy for "when it went stale")
+	 *
+	 * @return void
+	 */
+	private static function migrate_status_to_category() {
+		global $wpdb;
+		$table = self::table_name();
+
+		// The old status values ('active'/'convertible'/'unclassified'/
+		// 'ignored'/'stale') are hardcoded literals below, not constant
+		// references -- the STATUS_* constants they used to name no
+		// longer exist on this class at all, only CATEGORY_*/MODIFIER_*
+		// do. Safe to hardcode: these are fixed, one-time migration
+		// literals describing a schema that will never change again,
+		// not user input.
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = NULL, classified_at = first_seen WHERE status = 'active'", self::CATEGORY_AFFILIATE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = NULL, classified_at = first_seen WHERE status = 'convertible'", self::CATEGORY_CANDIDATE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = NULL, classified_at = first_seen WHERE status = 'unclassified'", self::CATEGORY_NONAFFILIATE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = %s, classified_at = dismissed_at WHERE status = 'ignored'", self::CATEGORY_NONAFFILIATE, self::MODIFIER_IGNORED ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = %s, classified_at = dead_confirmed_at WHERE status = 'stale' AND dead_confirmed_at IS NOT NULL", self::CATEGORY_NONAFFILIATE, self::MODIFIER_DEAD ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+
+		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() below.
+		$wpdb->query( $wpdb->prepare( "UPDATE {$table} SET category = %s, modifier = %s, classified_at = last_seen WHERE status = 'stale' AND dead_confirmed_at IS NULL", self::CATEGORY_NONAFFILIATE, self::MODIFIER_STALE ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real values bound via prepare() above.
+
+		// dbDelta() never drops columns -- these need a real ALTER. Built
+		// from only the columns that actually still exist, not a fixed
+		// list -- a single ALTER TABLE's multiple DROP COLUMN clauses
+		// are one atomic operation in MySQL, so trying to drop a column
+		// that's already gone (confirmed live: last_verified had
+		// already been removed by an earlier partial migration attempt)
+		// fails the *entire* statement, leaving every other column that
+		// really was ready to drop stuck in place too -- and, since
+		// $status_exists would then stay true forever, this whole
+		// function would keep re-running (harmlessly, but pointlessly)
+		// on every future boot instead of ever actually finishing.
+		$show_columns_sql   = "SHOW COLUMNS FROM {$table} LIKE %s"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; the real value (a fixed column name) is bound via prepare() below.
+		$columns_to_drop    = array();
+		$retired_column_set = array( 'status', 'dismissed_at', 'dead_confirmed_at', 'last_verified' );
+		foreach ( $retired_column_set as $column ) {
+			if ( $wpdb->get_var( $wpdb->prepare( $show_columns_sql, $column ) ) ) { // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
+				$columns_to_drop[] = 'DROP COLUMN ' . $column;
+			}
+		}
+
+		if ( $columns_to_drop ) {
+			$alter_sql = 'ALTER TABLE ' . $table . ' ' . implode( ', ', $columns_to_drop ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed, hardcoded column list, not user input.
+			$wpdb->query( $alter_sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- no user-supplied values in this statement at all.
+		}
 	}
 
 	/**

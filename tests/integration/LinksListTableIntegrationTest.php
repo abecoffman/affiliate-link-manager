@@ -3,12 +3,11 @@
  * Integration tests for ALM_Links_List_Table's "Dead" tab -- the one
  * piece of this round's work that isn't covered by exercising a
  * Scanner/Checker class directly: the tab is a query-scope decision
- * (status = stale AND dead_confirmed_at IS NOT NULL) living in
+ * (category = nonaffiliate AND modifier = dead) living in
  * get_views()/prepare_items(), and needs a real DB + real $_GET to
  * prove it actually draws that line correctly -- in particular that a
- * plain scan-swept stale link (dead_confirmed_at still NULL) never
- * shows up there. See ALM_Install::create_table()'s docblock for why
- * status=stale alone can't carry this distinction.
+ * plain scan-swept stale link (modifier = stale, not dead) never shows
+ * up there.
  *
  * @package ALM
  */
@@ -41,27 +40,28 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 
 	/**
 	 * @param string      $url
-	 * @param string      $status
-	 * @param string|null $dead_confirmed_at
+	 * @param string      $category
+	 * @param string|null $modifier
 	 * @return int Inserted row id.
 	 */
-	private function insert_link( $url, $status, $dead_confirmed_at = null ) {
+	private function insert_link( $url, $category, $modifier = null ) {
 		global $wpdb;
 		$now = current_time( 'mysql' );
 
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'           => 1,
-				'provider'          => 'unclassified',
-				'adapter'           => 'post_content',
-				'location'          => (string) wp_rand(),
-				'url'               => $url,
-				'anchor_text'       => 'link',
-				'status'            => $status,
-				'first_seen'        => $now,
-				'last_seen'         => $now,
-				'dead_confirmed_at' => $dead_confirmed_at,
+				'post_id'       => 1,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => (string) wp_rand(),
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => $category,
+				'modifier'      => $modifier,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -80,11 +80,11 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_dead_tab_only_shows_confirmed_dead_links() {
-		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
-		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
-		$this->insert_link( 'https://still-a-candidate.example.com/c', ALM_Install::STATUS_CONVERTIBLE, null );
+		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD );
+		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
+		$this->insert_link( 'https://still-a-candidate.example.com/c', ALM_Install::CATEGORY_CANDIDATE );
 
-		$_GET['status'] = 'dead';
+		$_GET['status'] = ALM_Install::MODIFIER_DEAD;
 
 		$list_table = $this->make_list_table();
 		$list_table->prepare_items();
@@ -94,9 +94,9 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_dead_tab_is_empty_when_no_link_has_been_confirmed_dead() {
-		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
+		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 
-		$_GET['status'] = 'dead';
+		$_GET['status'] = ALM_Install::MODIFIER_DEAD;
 
 		$list_table = $this->make_list_table();
 		$list_table->prepare_items();
@@ -105,34 +105,48 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_get_views_dead_count_matches_confirmed_dead_rows_only() {
-		$this->insert_link( 'https://confirmed-dead-1.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
-		$this->insert_link( 'https://confirmed-dead-2.example.com/b', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
-		$this->insert_link( 'https://merely-swept-stale.example.com/c', ALM_Install::STATUS_STALE, null );
+		$this->insert_link( 'https://confirmed-dead-1.example.com/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD );
+		$this->insert_link( 'https://confirmed-dead-2.example.com/b', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD );
+		$this->insert_link( 'https://merely-swept-stale.example.com/c', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 
 		$views = $this->make_list_table()->get_views();
 
-		$this->assertArrayHasKey( 'dead', $views, 'The "Dead Links" tab must appear once at least one link is confirmed dead.' );
-		$this->assertStringContainsString( '(2)', $views['dead'], 'Count must reflect only the confirmed-dead rows, not every stale row.' );
+		$this->assertArrayHasKey( ALM_Install::MODIFIER_DEAD, $views, 'The "Dead Links" tab must appear once at least one link is confirmed dead.' );
+		$this->assertStringContainsString( '(2)', $views[ ALM_Install::MODIFIER_DEAD ], 'Count must reflect only the confirmed-dead rows, not every stale row.' );
 	}
 
 	public function test_get_views_omits_the_dead_tab_when_nothing_is_confirmed_dead() {
-		$this->insert_link( 'https://merely-swept-stale.example.com/c', ALM_Install::STATUS_STALE, null );
+		$this->insert_link( 'https://merely-swept-stale.example.com/c', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 
 		$views = $this->make_list_table()->get_views();
 
-		$this->assertArrayNotHasKey( 'dead', $views, 'Same convention every other empty status tab already follows -- see get_views() docblock.' );
+		$this->assertArrayNotHasKey( ALM_Install::MODIFIER_DEAD, $views, 'Same convention every other empty tab already follows -- see get_views() docblock.' );
 	}
 
-	public function test_the_plain_stale_tab_still_includes_both_kinds_of_stale_link() {
-		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
-		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
+	/**
+	 * A raw ?status=stale bookmark (the literal old status value this
+	 * table used before category/modifier existed) is deliberately not
+	 * a recognized tab key anymore -- "stale" was never meant to be
+	 * directly browsable in the first place (see get_views()'s own
+	 * docblock), so an unrecognized value falls through to the same
+	 * "All" behavior as any other unrecognized ?status=, rather than
+	 * matching the raw modifier literally the way the old status column
+	 * briefly allowed.
+	 */
+	public function test_an_unrecognized_status_param_falls_back_to_all() {
+		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD );
+		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
+		$this->insert_link( 'https://still-a-candidate.example.com/c', ALM_Install::CATEGORY_CANDIDATE );
 
-		$_GET['status'] = ALM_Install::STATUS_STALE;
+		$_GET['status'] = ALM_Install::MODIFIER_STALE;
 
 		$list_table = $this->make_list_table();
 		$list_table->prepare_items();
 
-		$this->assertCount( 2, $list_table->items, 'A direct ?status=stale URL (no longer linked from anywhere) still matches the raw status literally -- low priority, not part of any user-facing flow anymore.' );
+		$urls = wp_list_pluck( $list_table->items, 'url' );
+		$this->assertContains( 'https://confirmed-dead.example.com/a', $urls );
+		$this->assertContains( 'https://still-a-candidate.example.com/c', $urls );
+		$this->assertNotContains( 'https://merely-swept-stale.example.com/b', $urls, 'Falls back to "All" behavior, which never includes a merely-stale row either.' );
 	}
 
 	/**
@@ -143,9 +157,9 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 	 * something to review.
 	 */
 	public function test_all_tab_excludes_merely_stale_non_dead_rows_but_keeps_confirmed_dead_ones() {
-		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
-		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
-		$this->insert_link( 'https://still-a-candidate.example.com/c', ALM_Install::STATUS_CONVERTIBLE, null );
+		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD );
+		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
+		$this->insert_link( 'https://still-a-candidate.example.com/c', ALM_Install::CATEGORY_CANDIDATE );
 
 		$list_table = $this->make_list_table();
 		$list_table->prepare_items();
@@ -157,13 +171,13 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_nav_tabs_no_longer_include_a_bare_stale_entry() {
-		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
-		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
+		$this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD );
+		$this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 
 		$views = $this->make_list_table()->get_views();
 
-		$this->assertArrayNotHasKey( ALM_Install::STATUS_STALE, $views, '"Stale" is not a browsable nav tab anymore -- only "Dead Links" (its confirmed-dead slice) is.' );
-		$this->assertArrayHasKey( 'dead', $views );
+		$this->assertArrayNotHasKey( ALM_Install::MODIFIER_STALE, $views, '"Stale" is not a browsable nav tab anymore -- only "Dead Links" (its confirmed-dead slice) is.' );
+		$this->assertArrayHasKey( ALM_Install::MODIFIER_DEAD, $views );
 	}
 
 	/**
@@ -191,7 +205,7 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 			)
 		);
 
-		$dead_id = $this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::STATUS_STALE, current_time( 'mysql' ) );
+		$dead_id = $this->insert_link( 'https://confirmed-dead.example.com/a', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_DEAD );
 		global $wpdb;
 		$wpdb->update(
 			ALM_Install::table_name(),
@@ -202,7 +216,7 @@ class LinksListTableIntegrationTest extends WP_UnitTestCase {
 			array( 'id' => $dead_id )
 		);
 
-		$merely_stale_id = $this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::STATUS_STALE, null );
+		$merely_stale_id = $this->insert_link( 'https://merely-swept-stale.example.com/b', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 
 		$list_table = $this->make_list_table();
 		$reflection = new ReflectionMethod( $list_table, 'bulk_remove' );

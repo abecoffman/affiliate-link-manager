@@ -46,10 +46,15 @@ class ALM_Shortener_Scanner {
 			return 0;
 		}
 
-		$sql = "SELECT COUNT(*) FROM {$table} WHERE resolved_at IS NULL AND provider = 'unclassified' AND status != %s"
+		// modifier IS NULL OR modifier != %s, not just modifier != %s --
+		// most eligible rows have a NULL modifier (a plain Candidate or
+		// noise link), and SQL's three-valued logic makes `NULL != 'x'`
+		// evaluate to NULL (excluded by WHERE), not true, unlike the old
+		// status column which was never actually NULL.
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE resolved_at IS NULL AND provider = 'unclassified' AND ( modifier IS NULL OR modifier != %s )"
 			. " AND SUBSTRING_INDEX(SUBSTRING_INDEX(url, '/', 3), '://', -1) IN ({$placeholders})"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name + a fixed run of %s tokens, not user input; real values bound via prepare() below.
 
-		$params = array_merge( array( ALM_Install::STATUS_IGNORED ), $domains );
+		$params = array_merge( array( ALM_Install::MODIFIER_IGNORED ), $domains );
 
 		return (int) $wpdb->get_var( $wpdb->prepare( $sql, $params ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 	}
@@ -81,10 +86,12 @@ class ALM_Shortener_Scanner {
 			);
 		}
 
-		$sql = "SELECT * FROM {$table} WHERE resolved_at IS NULL AND provider = 'unclassified' AND status != %s"
+		// See count_pending()'s own comment for why this is
+		// (modifier IS NULL OR modifier != %s), not just modifier != %s.
+		$sql = "SELECT * FROM {$table} WHERE resolved_at IS NULL AND provider = 'unclassified' AND ( modifier IS NULL OR modifier != %s )"
 			. " AND SUBSTRING_INDEX(SUBSTRING_INDEX(url, '/', 3), '://', -1) IN ({$placeholders}) LIMIT %d"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- same as count_pending() above.
 
-		$params = array_merge( array( ALM_Install::STATUS_IGNORED ), $domains, array( $batch_size ) );
+		$params = array_merge( array( ALM_Install::MODIFIER_IGNORED ), $domains, array( $batch_size ) );
 		$rows   = $wpdb->get_results( $wpdb->prepare( $sql, $params ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- built entirely from prepare() above.
 
 		foreach ( (array) $rows as $row ) {
@@ -125,21 +132,21 @@ class ALM_Shortener_Scanner {
 	 * @return void
 	 */
 	private function record_expand_delta( $started_at ) {
-		$reclassified = 0;
-		$stale        = 0;
+		$reclassified   = 0;
+		$confirmed_dead = 0;
 
 		if ( $started_at ) {
 			global $wpdb;
 			$table = ALM_Install::table_name();
 
-			$sql  = "SELECT status, COUNT(*) as total FROM {$table} WHERE resolved_at >= %s GROUP BY status"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
+			$sql  = "SELECT category, modifier, COUNT(*) as total FROM {$table} WHERE resolved_at >= %s GROUP BY category, modifier"; // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input; real value bound via prepare() below.
 			$rows = $wpdb->get_results( $wpdb->prepare( $sql, $started_at ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- built entirely from prepare() above; small admin-only aggregate query.
 
 			foreach ( (array) $rows as $row ) {
-				if ( ALM_Install::STATUS_ACTIVE === $row['status'] ) {
+				if ( ALM_Install::CATEGORY_AFFILIATE === $row['category'] ) {
 					$reclassified = (int) $row['total'];
-				} elseif ( ALM_Install::STATUS_STALE === $row['status'] ) {
-					$stale = (int) $row['total'];
+				} elseif ( ALM_Install::MODIFIER_DEAD === $row['modifier'] ) {
+					$confirmed_dead = (int) $row['total'];
 				}
 			}
 		}
@@ -147,8 +154,8 @@ class ALM_Shortener_Scanner {
 		update_option(
 			'alm_last_shortener_expand_delta',
 			array(
-				'reclassified' => $reclassified,
-				'stale'        => $stale,
+				'reclassified'   => $reclassified,
+				'confirmed_dead' => $confirmed_dead,
 			)
 		);
 	}
@@ -166,19 +173,18 @@ class ALM_Shortener_Scanner {
 
 		if ( $result['dead'] ) {
 			// Confirmed dead (404/410 from the shortener itself) -- not
-			// a real opportunity anymore, marked stale rather than left
-			// looking like an untouched Candidate forever. dead_confirmed_at
-			// set here too, same as ALM_Link_Health_Scanner's own
-			// confirmed-dead branch, so ALM_Links_List_Table's "Dead" tab
-			// shows every confirmed-dead link regardless of which
-			// mechanism found it -- see ALM_Install::create_table()'s
-			// docblock for why status=stale alone can't carry this.
+			// a real opportunity anymore, moved to nonaffiliate/dead the
+			// same way ALM_Link_Health_Scanner's own confirmed-dead
+			// branch does, so ALM_Links_List_Table's "Dead" tab shows
+			// every confirmed-dead link regardless of which mechanism
+			// found it.
 			$wpdb->update(
 				$table,
 				array(
-					'resolved_at'       => $now,
-					'status'            => ALM_Install::STATUS_STALE,
-					'dead_confirmed_at' => $now,
+					'resolved_at'   => $now,
+					'category'      => ALM_Install::CATEGORY_NONAFFILIATE,
+					'modifier'      => ALM_Install::MODIFIER_DEAD,
+					'classified_at' => $now,
 				),
 				array( 'id' => $row['id'] )
 			);
@@ -207,22 +213,22 @@ class ALM_Shortener_Scanner {
 		// be, same trust level. An unmatched destination (a plain,
 		// unwrapped retailer URL, or something only
 		// ALM_Candidate_Classifier would have an opinion on) is
-		// deliberately left as whatever status it already had -- still
-		// a real Candidate, just a richer one with its actual
-		// destination now visible, not silently promoted to "active"
-		// on a guess.
+		// deliberately left as whatever category/modifier it already
+		// had -- still a real Candidate, just a richer one with its
+		// actual destination now visible, not silently promoted to
+		// "affiliate" on a guess.
 		if ( ! ( $matched_provider instanceof ALM_Provider_Generic ) ) {
 			$data['provider'] = $matched_provider->get_id();
-			$data['status']   = ALM_Install::STATUS_ACTIVE;
-
-			// Narrow but real: a shortener-domain link could have been
-			// marked stale-and-dead-confirmed by ALM_Link_Health_Scanner
-			// before this scanner ever got to expand it. Reclassifying
-			// it to active here must not leave a stale dead_confirmed_at
-			// verdict behind -- same reasoning as ALM_Scanner::upsert_link().
-			if ( ALM_Install::STATUS_STALE === $row['status'] && ! empty( $row['dead_confirmed_at'] ) ) {
-				$data['dead_confirmed_at'] = null;
-			}
+			$data['category'] = ALM_Install::CATEGORY_AFFILIATE;
+			// A shortener-domain link could have been marked
+			// nonaffiliate/dead by ALM_Link_Health_Scanner before this
+			// scanner ever got to expand it -- reclassifying it to
+			// affiliate here must not leave that modifier behind, same
+			// reasoning as ALM_Scanner::upsert_link(). Unconditional,
+			// not gated on whether one was actually set -- clearing an
+			// already-NULL modifier is a harmless no-op.
+			$data['modifier']      = null;
+			$data['classified_at'] = $now;
 		}
 
 		$wpdb->update( $table, $data, array( 'id' => $row['id'] ) );

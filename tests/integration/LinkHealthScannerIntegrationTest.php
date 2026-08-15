@@ -71,26 +71,29 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * @param string $url
-	 * @param string $status
+	 * @param string      $url
+	 * @param string      $category
+	 * @param string|null $modifier
 	 * @return int Inserted row id.
 	 */
-	private function insert_link( $url, $status = ALM_Install::STATUS_CONVERTIBLE ) {
+	private function insert_link( $url, $category = ALM_Install::CATEGORY_CANDIDATE, $modifier = null ) {
 		global $wpdb;
 		$now = current_time( 'mysql' );
 
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => 1,
-				'provider'    => 'unclassified',
-				'adapter'     => 'post_content',
-				'location'    => (string) wp_rand(),
-				'url'         => $url,
-				'anchor_text' => 'link',
-				'status'      => $status,
-				'first_seen'  => $now,
-				'last_seen'   => $now,
+				'post_id'       => 1,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => (string) wp_rand(),
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => $category,
+				'modifier'      => $modifier,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -109,7 +112,7 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A );
 	}
 
-	public function test_a_confirmed_dead_candidate_is_marked_stale() {
+	public function test_a_confirmed_dead_candidate_is_moved_to_nonaffiliate_dead() {
 		$id = $this->insert_link( 'https://gone.example.com/product' );
 		$this->fake_http_responses( array( 'https://gone.example.com/product' => 404 ) );
 
@@ -118,9 +121,9 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertTrue( $result['done'] );
 
 		$row = $this->get_row( $id );
-		$this->assertSame( ALM_Install::STATUS_STALE, $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_NONAFFILIATE, $row['category'] );
 		$this->assertNotNull( $row['health_checked_at'] );
-		$this->assertNotNull( $row['dead_confirmed_at'], 'A confirmed-dead result must set dead_confirmed_at so ALM_Links_List_Table\'s "Dead" tab can find it -- see ALM_Install::create_table()\'s docblock.' );
+		$this->assertSame( ALM_Install::MODIFIER_DEAD, $row['modifier'], 'A confirmed-dead result must set modifier=dead so ALM_Links_List_Table\'s "Dead" tab can find it -- see ALM_Install::count_confirmed_dead().' );
 	}
 
 	public function test_a_bot_blocked_candidate_stays_a_candidate() {
@@ -130,9 +133,9 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		$row = $this->get_row( $id );
-		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $row['status'], 'A 403 is ambiguous (real, live retailers block automated requests) -- must not be demoted.' );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $row['category'], 'A 403 is ambiguous (real, live retailers block automated requests) -- must not be demoted.' );
 		$this->assertNotNull( $row['health_checked_at'], 'Still marked checked, so it is not retried every single batch.' );
-		$this->assertNull( $row['dead_confirmed_at'], 'Ambiguous, not confirmed dead -- must not appear on the "Dead" tab.' );
+		$this->assertNull( $row['modifier'], 'Ambiguous, not confirmed dead -- must not appear on the "Dead" tab.' );
 	}
 
 	public function test_a_live_candidate_stays_a_candidate() {
@@ -142,14 +145,14 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		$row = $this->get_row( $id );
-		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $row['category'] );
 		$this->assertNotNull( $row['health_checked_at'] );
-		$this->assertNull( $row['dead_confirmed_at'] );
+		$this->assertNull( $row['modifier'] );
 	}
 
 	public function test_active_and_already_stale_links_are_never_checked() {
-		$active_id = $this->insert_link( 'https://active-link.example.com/product', ALM_Install::STATUS_ACTIVE );
-		$stale_id  = $this->insert_link( 'https://stale-link.example.com/product', ALM_Install::STATUS_STALE );
+		$active_id = $this->insert_link( 'https://active-link.example.com/product', ALM_Install::CATEGORY_AFFILIATE );
+		$stale_id  = $this->insert_link( 'https://stale-link.example.com/product', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_STALE );
 		$this->fake_http_responses(
 			array(
 				'https://active-link.example.com/product' => 404,
@@ -158,7 +161,7 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 		);
 
 		$result = $this->scanner->check_batch( 10 );
-		$this->assertSame( 0, $result['checked'], 'Only status=convertible links are ever selected for a health check.' );
+		$this->assertSame( 0, $result['checked'], 'Only category=candidate links are ever selected for a health check.' );
 
 		$this->assertNull( $this->get_row( $active_id )['health_checked_at'] );
 		$this->assertNull( $this->get_row( $stale_id )['health_checked_at'] );
@@ -166,7 +169,7 @@ class LinkHealthScannerIntegrationTest extends WP_UnitTestCase {
 
 	public function test_count_pending_reflects_only_unchecked_candidates() {
 		$this->insert_link( 'https://one.example.com/product' );
-		$this->insert_link( 'https://two.example.com/product', ALM_Install::STATUS_ACTIVE );
+		$this->insert_link( 'https://two.example.com/product', ALM_Install::CATEGORY_AFFILIATE );
 
 		$this->assertSame( 1, $this->scanner->count_pending() );
 	}

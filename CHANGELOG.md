@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Reconstructed
 from git history up through 1.20.0; entries from that point on are
 written as the change ships.
 
+## [1.22.0] - 2026-08-14
+
+Collapsed the `status` column (`active`/`convertible`/`unclassified`/
+`stale`/`ignored`, with `stale` overloaded to mean two different things
+depending on a separate nullable `dead_confirmed_at`) into two
+dimensions that match how a user actually thinks about a link:
+
+- `category`: `affiliate` | `candidate` | `nonaffiliate`.
+- `modifier`: only ever set when `category = nonaffiliate`, exactly one
+  of `ignored` | `dead` | `stale` at a time.
+- `classified_at`: one timestamp, stamped whenever `category`/`modifier`
+  actually changes -- replaces `dismissed_at` and `dead_confirmed_at`,
+  both of which were only ever doing double duty as a boolean test and
+  a timestamp for one specific transition each.
+
+A link no longer found in any post now demotes all the way to
+`nonaffiliate`+`stale`, even if it was a real `affiliate` link or a
+`candidate` a moment ago -- previously it kept its old status while
+secretly not being found. The quiet retention cleanup for those rows
+also got a real behavior change alongside the rename: the grace period
+before deletion dropped from 60 days to 3 (`alm_stale_link_retention_days`)
+and its cutoff now keys off `classified_at` (the actual moment a row
+became stale) instead of `last_seen` (a proxy for it).
+
+Self-healing migration in `ALM_Install::maybe_upgrade()`, same pattern
+as every prior schema change here -- backfills every existing row from
+its old status/timestamp shape, then drops the retired columns (plus
+the already-vestigial `last_verified`) in the same pass.
+
 ## [1.21.0] - 2026-08-14
 
 Addressed findings from a TL-style code review of the whole plugin:

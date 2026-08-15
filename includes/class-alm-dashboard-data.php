@@ -79,10 +79,15 @@ class ALM_Dashboard_Data {
 
 	/**
 	 * The three-tier headline counts the Dashboard Overview is built
-	 * around: Affiliate Links (status=active), Candidate Affiliate
-	 * Links (status=convertible), and Other Outbound Links
-	 * (status=unclassified) -- the last of which is deliberately never
-	 * shown anywhere else as more than this one summary number.
+	 * around: Affiliate Links (category=affiliate), Candidate Affiliate
+	 * Links (category=candidate), and Other Outbound Links
+	 * (category=nonaffiliate, modifier IS NULL specifically -- not
+	 * every nonaffiliate row) -- the last of which is deliberately
+	 * never shown anywhere else as more than this one summary number.
+	 * A nonaffiliate row that's ignored, dead, or stale already has its
+	 * own explicit surface elsewhere (the Ignored tab, the Dead Links
+	 * tile, quiet cron cleanup respectively) and must not also be
+	 * double-counted into this plain "noise" bucket.
 	 *
 	 * @return array<string,int>
 	 */
@@ -91,14 +96,22 @@ class ALM_Dashboard_Data {
 		$table = ALM_Install::table_name();
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- table name, not user input; small admin-only aggregate query.
-		$rows      = $wpdb->get_results( "SELECT status, COUNT(*) as total FROM {$table} GROUP BY status", ARRAY_A );
-		$by_status = wp_list_pluck( $rows, 'total', 'status' );
+		$rows = $wpdb->get_results( "SELECT category, modifier, COUNT(*) as total FROM {$table} GROUP BY category, modifier", ARRAY_A );
 
-		return array(
-			ALM_Install::STATUS_ACTIVE       => isset( $by_status[ ALM_Install::STATUS_ACTIVE ] ) ? (int) $by_status[ ALM_Install::STATUS_ACTIVE ] : 0,
-			ALM_Install::STATUS_CONVERTIBLE  => isset( $by_status[ ALM_Install::STATUS_CONVERTIBLE ] ) ? (int) $by_status[ ALM_Install::STATUS_CONVERTIBLE ] : 0,
-			ALM_Install::STATUS_UNCLASSIFIED => isset( $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] ) ? (int) $by_status[ ALM_Install::STATUS_UNCLASSIFIED ] : 0,
+		$summary = array(
+			ALM_Install::CATEGORY_AFFILIATE    => 0,
+			ALM_Install::CATEGORY_CANDIDATE    => 0,
+			ALM_Install::CATEGORY_NONAFFILIATE => 0,
 		);
+
+		foreach ( (array) $rows as $row ) {
+			if ( ALM_Install::CATEGORY_NONAFFILIATE === $row['category'] && null !== $row['modifier'] ) {
+				continue; // Ignored/dead/stale -- not part of this plain noise count, see docblock above.
+			}
+			$summary[ $row['category'] ] = (int) $row['total'];
+		}
+
+		return $summary;
 	}
 
 	/**
@@ -264,7 +277,7 @@ class ALM_Dashboard_Data {
 	}
 
 	/**
-	 * @param array{reclassified?:int,stale?:int} $delta
+	 * @param array{reclassified?:int,confirmed_dead?:int} $delta
 	 * @return string
 	 */
 	private function format_shortener_delta( array $delta ) {
@@ -272,18 +285,18 @@ class ALM_Dashboard_Data {
 			return '';
 		}
 
-		$reclassified = isset( $delta['reclassified'] ) ? (int) $delta['reclassified'] : 0;
-		$stale        = isset( $delta['stale'] ) ? (int) $delta['stale'] : 0;
+		$reclassified   = isset( $delta['reclassified'] ) ? (int) $delta['reclassified'] : 0;
+		$confirmed_dead = isset( $delta['confirmed_dead'] ) ? (int) $delta['confirmed_dead'] : 0;
 
-		if ( 0 === $reclassified && 0 === $stale ) {
+		if ( 0 === $reclassified && 0 === $confirmed_dead ) {
 			return __( 'nothing new to resolve', 'affiliate-link-manager' );
 		}
 
 		return sprintf(
 			/* translators: 1: number of shortened links tracked to a known network, 2: number confirmed dead */
-			__( '%1$d tracked, %2$d marked stale', 'affiliate-link-manager' ),
+			__( '%1$d tracked, %2$d confirmed dead', 'affiliate-link-manager' ),
 			$reclassified,
-			$stale
+			$confirmed_dead
 		);
 	}
 

@@ -57,26 +57,29 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * @param string $url
-	 * @param string $status
+	 * @param string      $url
+	 * @param string      $category
+	 * @param string|null $modifier
 	 * @return int Inserted row id.
 	 */
-	private function insert_link( $url, $status ) {
+	private function insert_link( $url, $category, $modifier = null ) {
 		global $wpdb;
 		$now = current_time( 'mysql' );
 
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => 1,
-				'provider'    => 'unclassified',
-				'adapter'     => 'post_content',
-				'location'    => (string) wp_rand(),
-				'url'         => $url,
-				'anchor_text' => 'link',
-				'status'      => $status,
-				'first_seen'  => $now,
-				'last_seen'   => $now,
+				'post_id'       => 1,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => (string) wp_rand(),
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => $category,
+				'modifier'      => $modifier,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -84,7 +87,7 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_a_confirmed_shop_domain_stays_convertible_and_is_cached() {
-		$this->insert_link( 'https://smallboutique.example/product/necklace', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://smallboutique.example/product/necklace', ALM_Install::CATEGORY_CANDIDATE );
 		$this->fake_http_response( '<meta property="og:type" content="product" />' );
 
 		$result = $this->scanner->check_batch( 10 );
@@ -97,37 +100,38 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 1, (int) $domain_row['is_shop'] );
 		$this->assertNotNull( $domain_row['checked_at'] );
 
-		$link = $wpdb->get_row( 'SELECT status FROM ' . ALM_Install::table_name() . " WHERE url = 'https://smallboutique.example/product/necklace'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
-		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $link['status'] );
+		$link = $wpdb->get_row( 'SELECT category FROM ' . ALM_Install::table_name() . " WHERE url = 'https://smallboutique.example/product/necklace'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $link['category'] );
 	}
 
 	public function test_a_confirmed_non_shop_domain_gets_reclassified_to_unclassified() {
 		// This link was a heuristic-default candidate (nothing said it
 		// was noise yet) -- the real content check is what should catch
 		// it, the exact scenario the whole feature exists for.
-		$id = $this->insert_link( 'https://some-magazine-nobody-listed.example/article', ALM_Install::STATUS_CONVERTIBLE );
+		$id = $this->insert_link( 'https://some-magazine-nobody-listed.example/article', ALM_Install::CATEGORY_CANDIDATE );
 		$this->fake_http_response( '<html><body><article><h1>An article</h1></article></body></html>' );
 
 		$this->scanner->check_batch( 10 );
 
 		global $wpdb;
-		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
-		$this->assertSame( ALM_Install::STATUS_UNCLASSIFIED, $status );
+		$category = $wpdb->get_var( $wpdb->prepare( 'SELECT category FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$this->assertSame( ALM_Install::CATEGORY_NONAFFILIATE, $category );
 	}
 
 	public function test_ignored_links_are_never_touched_even_if_their_domain_gets_checked() {
-		$id = $this->insert_link( 'https://some-magazine-nobody-listed.example/article', ALM_Install::STATUS_IGNORED );
+		$id = $this->insert_link( 'https://some-magazine-nobody-listed.example/article', ALM_Install::CATEGORY_NONAFFILIATE, ALM_Install::MODIFIER_IGNORED );
 		$this->fake_http_response( '<meta property="og:type" content="product" />' );
 
 		$this->scanner->check_batch( 10 );
 
 		global $wpdb;
-		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
-		$this->assertSame( ALM_Install::STATUS_IGNORED, $status, 'An explicitly ignored link must stay ignored regardless of what the domain check finds.' );
+		$row = $wpdb->get_row( $wpdb->prepare( 'SELECT category, modifier FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ), ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$this->assertSame( ALM_Install::CATEGORY_NONAFFILIATE, $row['category'], 'An explicitly ignored link must stay ignored regardless of what the domain check finds.' );
+		$this->assertSame( ALM_Install::MODIFIER_IGNORED, $row['modifier'] );
 	}
 
 	public function test_a_failed_fetch_leaves_the_links_status_untouched() {
-		$id = $this->insert_link( 'https://unreachable.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$id = $this->insert_link( 'https://unreachable.example/product', ALM_Install::CATEGORY_CANDIDATE );
 		add_filter(
 			'pre_http_request',
 			function () {
@@ -138,8 +142,8 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		global $wpdb;
-		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT status FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
-		$this->assertSame( ALM_Install::STATUS_CONVERTIBLE, $status, 'A failed check must never bury a link back in the noise bucket.' );
+		$status = $wpdb->get_var( $wpdb->prepare( 'SELECT category FROM ' . ALM_Install::table_name() . ' WHERE id = %d', $id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $status, 'A failed check must never bury a link back in the noise bucket.' );
 
 		$domain_row = $wpdb->get_row( 'SELECT * FROM ' . ALM_Install::domains_table_name() . " WHERE domain = 'unreachable.example'", ARRAY_A ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
 		$this->assertNull( $domain_row['is_shop'] );
@@ -147,9 +151,9 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function test_one_domain_with_many_links_only_costs_one_http_request() {
-		$this->insert_link( 'https://busyshop.example/product/1', ALM_Install::STATUS_CONVERTIBLE );
-		$this->insert_link( 'https://busyshop.example/product/2', ALM_Install::STATUS_CONVERTIBLE );
-		$this->insert_link( 'https://busyshop.example/product/3', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://busyshop.example/product/1', ALM_Install::CATEGORY_CANDIDATE );
+		$this->insert_link( 'https://busyshop.example/product/2', ALM_Install::CATEGORY_CANDIDATE );
+		$this->insert_link( 'https://busyshop.example/product/3', ALM_Install::CATEGORY_CANDIDATE );
 
 		$request_count = 0;
 		add_filter(
@@ -170,12 +174,12 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( 1, $request_count );
 
 		global $wpdb;
-		$statuses = $wpdb->get_col( 'SELECT status FROM ' . ALM_Install::table_name() . " WHERE url LIKE 'https://busyshop.example/%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
-		$this->assertSame( array( ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_CONVERTIBLE, ALM_Install::STATUS_CONVERTIBLE ), $statuses );
+		$statuses = $wpdb->get_col( 'SELECT category FROM ' . ALM_Install::table_name() . " WHERE url LIKE 'https://busyshop.example/%'" ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- fixed table name, test-only.
+		$this->assertSame( array( ALM_Install::CATEGORY_CANDIDATE, ALM_Install::CATEGORY_CANDIDATE, ALM_Install::CATEGORY_CANDIDATE ), $statuses );
 	}
 
 	public function test_a_recently_checked_domain_is_not_checked_again() {
-		$this->insert_link( 'https://already-checked.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://already-checked.example/product', ALM_Install::CATEGORY_CANDIDATE );
 		$this->fake_http_response( '<meta property="og:type" content="product" />' );
 
 		$first  = $this->scanner->check_batch( 10 );
@@ -195,13 +199,13 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	 * data, not by reading the code.
 	 */
 	public function test_pending_count_reflects_a_brand_new_candidate_before_any_check_has_ever_run() {
-		$this->insert_link( 'https://never-checked-yet.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://never-checked-yet.example/product', ALM_Install::CATEGORY_CANDIDATE );
 
 		$this->assertSame( 1, $this->scanner->count_domains_needing_check(), 'A newly-discovered candidate domain must count as pending even before the first sync/check batch ever runs.' );
 	}
 
 	public function test_a_stale_checked_domain_becomes_eligible_again() {
-		$this->insert_link( 'https://stale-domain.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://stale-domain.example/product', ALM_Install::CATEGORY_CANDIDATE );
 		$this->fake_http_response( '<meta property="og:type" content="product" />' );
 		$this->scanner->check_batch( 10 );
 
@@ -222,8 +226,8 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	 * time instead of nothing (see ALM_Dashboard_Data::get_dashboard_tasks()).
 	 */
 	public function test_first_of_run_records_a_delta_of_what_this_run_actually_found() {
-		$this->insert_link( 'https://realshop.example/product', ALM_Install::STATUS_CONVERTIBLE );
-		$this->insert_link( 'https://magazine.example/article', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://realshop.example/product', ALM_Install::CATEGORY_CANDIDATE );
+		$this->insert_link( 'https://magazine.example/article', ALM_Install::CATEGORY_CANDIDATE );
 
 		add_filter(
 			'pre_http_request',
@@ -259,8 +263,8 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	 * batch must not reset when the run itself began.
 	 */
 	public function test_a_resumed_batch_does_not_restamp_the_run_start_or_lose_the_first_batchs_delta() {
-		$this->insert_link( 'https://shop-a.example/product', ALM_Install::STATUS_CONVERTIBLE );
-		$this->insert_link( 'https://shop-b.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://shop-a.example/product', ALM_Install::CATEGORY_CANDIDATE );
+		$this->insert_link( 'https://shop-b.example/product', ALM_Install::CATEGORY_CANDIDATE );
 		$this->fake_http_response( '<meta property="og:type" content="product" />' );
 
 		$first = $this->scanner->check_batch( 1, true );
@@ -284,7 +288,7 @@ class DomainScannerIntegrationTest extends WP_UnitTestCase {
 	 * fabricate a run boundary out of nothing.
 	 */
 	public function test_omitting_is_first_of_run_does_not_fabricate_a_run_start() {
-		$this->insert_link( 'https://shop-c.example/product', ALM_Install::STATUS_CONVERTIBLE );
+		$this->insert_link( 'https://shop-c.example/product', ALM_Install::CATEGORY_CANDIDATE );
 		$this->fake_http_response( '<meta property="og:type" content="product" />' );
 
 		$this->scanner->check_batch( 10 );

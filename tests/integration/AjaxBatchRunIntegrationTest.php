@@ -74,25 +74,25 @@ class AjaxBatchRunIntegrationTest extends WP_Ajax_UnitTestCase {
 
 	/**
 	 * @param string $url
-	 * @param string $status
 	 * @return int Inserted row id.
 	 */
-	private function insert_link( $url, $status = ALM_Install::STATUS_CONVERTIBLE ) {
+	private function insert_link( $url ) {
 		global $wpdb;
 		$now = current_time( 'mysql' );
 
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => 1,
-				'provider'    => 'unclassified',
-				'adapter'     => 'post_content',
-				'location'    => (string) wp_rand(),
-				'url'         => $url,
-				'anchor_text' => 'link',
-				'status'      => $status,
-				'first_seen'  => $now,
-				'last_seen'   => $now,
+				'post_id'       => 1,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => (string) wp_rand(),
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => ALM_Install::CATEGORY_CANDIDATE,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 

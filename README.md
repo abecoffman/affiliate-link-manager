@@ -91,11 +91,3 @@ that exercise the Beaver Builder adapter are skipped unless
 
 `tests/e2e/` is a Playwright suite exercising the real admin screens end
 to end; see its own README/config for how to point it at a running site.
-
-## Known vestiges
-
-- `last_verified` (a column in the links table) predates
-  `health_checked_at`/`dead_confirmed_at` and is no longer read or
-  written anywhere. Left in place rather than dropped via a migration
-  for a column nobody's using; candidate for removal in a future
-  schema-touching round.

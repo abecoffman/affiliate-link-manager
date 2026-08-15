@@ -53,15 +53,16 @@ class EditLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => $post_id,
-				'provider'    => 'unclassified',
-				'adapter'     => 'post_content',
-				'location'    => '0',
-				'url'         => $url,
-				'anchor_text' => 'link',
-				'status'      => ALM_Install::STATUS_CONVERTIBLE,
-				'first_seen'  => $now,
-				'last_seen'   => $now,
+				'post_id'       => $post_id,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => '0',
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => ALM_Install::CATEGORY_CANDIDATE,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -97,7 +98,7 @@ class EditLinkIntegrationTest extends WP_Ajax_UnitTestCase {
 
 		$this->assertSame( $new_url, $row['url'] );
 		$this->assertSame( 'shopmy', $row['provider'], 'A URL matching a real network gets relabeled from its own domain, not left unclassified.' );
-		$this->assertSame( ALM_Install::STATUS_ACTIVE, $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $row['category'] );
 
 		$fresh = get_post( $post_id );
 		$this->assertStringContainsString( $new_url, $fresh->post_content, 'The post content itself must reflect the new URL.' );

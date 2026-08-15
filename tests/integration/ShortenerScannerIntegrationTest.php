@@ -92,15 +92,16 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$wpdb->insert(
 			ALM_Install::table_name(),
 			array(
-				'post_id'     => 1,
-				'provider'    => 'unclassified',
-				'adapter'     => 'post_content',
-				'location'    => (string) wp_rand(),
-				'url'         => $url,
-				'anchor_text' => 'link',
-				'status'      => ALM_Install::STATUS_CONVERTIBLE,
-				'first_seen'  => $now,
-				'last_seen'   => $now,
+				'post_id'       => 1,
+				'provider'      => 'unclassified',
+				'adapter'       => 'post_content',
+				'location'      => (string) wp_rand(),
+				'url'           => $url,
+				'anchor_text'   => 'link',
+				'category'      => ALM_Install::CATEGORY_CANDIDATE,
+				'classified_at' => $now,
+				'first_seen'    => $now,
+				'last_seen'     => $now,
 			)
 		);
 
@@ -137,7 +138,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_row( $id );
 		$this->assertSame( 'amazon', $row['provider'] );
-		$this->assertSame( 'active', $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $row['category'] );
 		$this->assertSame( 'https://amzn.to/manually-generated', $row['resolved_url'] );
 	}
 
@@ -157,11 +158,11 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 
 		$row = $this->get_row( $id );
 		$this->assertSame( 'unclassified', $row['provider'] );
-		$this->assertSame( 'convertible', $row['status'], 'Still a real Candidate -- not auto-promoted on an unmatched destination.' );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $row['category'], 'Still a real Candidate -- not auto-promoted on an unmatched destination.' );
 		$this->assertSame( 'https://www.zara.com/us/en/product.html', $row['resolved_url'] );
 	}
 
-	public function test_a_confirmed_dead_shortlink_is_marked_stale() {
+	public function test_a_confirmed_dead_shortlink_is_moved_to_nonaffiliate_dead() {
 		$id = $this->insert_link( 'http://bit.ly/dead-link' );
 		$this->fake_http_chain(
 			array(
@@ -172,13 +173,13 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		$row = $this->get_row( $id );
-		$this->assertSame( 'stale', $row['status'] );
+		$this->assertSame( ALM_Install::CATEGORY_NONAFFILIATE, $row['category'] );
+		$this->assertSame( ALM_Install::MODIFIER_DEAD, $row['modifier'], 'Confirmed dead here too -- ALM_Links_List_Table\'s "Dead" tab must show it regardless of which scanner found it.' );
 		$this->assertNull( $row['resolved_url'] );
 		$this->assertNotNull( $row['resolved_at'], 'Marked resolved even though dead -- must not be retried every batch.' );
-		$this->assertNotNull( $row['dead_confirmed_at'], 'Confirmed dead here too -- ALM_Links_List_Table\'s "Dead" tab must show it regardless of which scanner found it.' );
 	}
 
-	public function test_an_inconclusive_fetch_leaves_status_untouched_but_marks_resolved_at() {
+	public function test_an_inconclusive_fetch_leaves_category_untouched_but_marks_resolved_at() {
 		$id = $this->insert_link( 'http://bit.ly/server-error' );
 		$this->fake_http_chain(
 			array(
@@ -189,16 +190,16 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		$row = $this->get_row( $id );
-		$this->assertSame( 'convertible', $row['status'], 'Inconclusive -- must not change status on a guess.' );
+		$this->assertSame( ALM_Install::CATEGORY_CANDIDATE, $row['category'], 'Inconclusive -- must not change category on a guess.' );
+		$this->assertNull( $row['modifier'] );
 		$this->assertNull( $row['resolved_url'] );
 		$this->assertNotNull( $row['resolved_at'] );
-		$this->assertNull( $row['dead_confirmed_at'] );
 	}
 
 	/**
-	 * @covers ALM_Install
+	 * @covers ALM_Shortener_Scanner
 	 */
-	public function test_reclassifying_to_active_clears_a_prior_dead_confirmed_verdict() {
+	public function test_reclassifying_to_affiliate_clears_a_prior_dead_modifier() {
 		$id = $this->insert_link( 'http://bit.ly/abc123' );
 
 		// Simulate a prior ALM_Link_Health_Scanner verdict on this exact
@@ -208,8 +209,9 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$wpdb->update(
 			ALM_Install::table_name(),
 			array(
-				'status'            => ALM_Install::STATUS_STALE,
-				'dead_confirmed_at' => current_time( 'mysql' ),
+				'category'      => ALM_Install::CATEGORY_NONAFFILIATE,
+				'modifier'      => ALM_Install::MODIFIER_DEAD,
+				'classified_at' => current_time( 'mysql' ),
 			),
 			array( 'id' => $id )
 		);
@@ -227,8 +229,8 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		$this->scanner->check_batch( 10 );
 
 		$row = $this->get_row( $id );
-		$this->assertSame( 'active', $row['status'], 'A confident provider match reclassifies to active even from a prior stale/dead verdict.' );
-		$this->assertNull( $row['dead_confirmed_at'], 'Reclassifying away from stale must not leave a stale dead-confirmation behind.' );
+		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $row['category'], 'A confident provider match reclassifies to affiliate even from a prior dead verdict.' );
+		$this->assertNull( $row['modifier'], 'Reclassifying away from dead must not leave that modifier behind.' );
 	}
 
 	public function test_a_non_shortener_link_is_never_touched() {
@@ -276,7 +278,7 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 
 		$delta = get_option( 'alm_last_shortener_expand_delta' );
 		$this->assertSame( 1, $delta['reclassified'] );
-		$this->assertSame( 1, $delta['stale'] );
+		$this->assertSame( 1, $delta['confirmed_dead'] );
 	}
 
 	/**

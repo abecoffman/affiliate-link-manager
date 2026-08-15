@@ -77,9 +77,10 @@ class ALM_Link_Converter {
 	 * row -- once the link is out of the post there's nothing left to
 	 * track, same reasoning the bulk Delete action already uses for a
 	 * link an admin dismisses outright. Callers are expected to have
-	 * already confirmed $item['status'] is stale before calling this
-	 * (see ALM_Links_List_Table::bulk_remove()/ALM_Admin::handle_remove_link());
-	 * this method itself doesn't re-check status, only that the content
+	 * already confirmed $item['category']/$item['modifier'] is
+	 * nonaffiliate/dead before calling this (see
+	 * ALM_Links_List_Table::bulk_remove()/ALM_Admin::handle_remove_link());
+	 * this method itself doesn't re-check that, only that the content
 	 * adapter can still find the link where the last scan left it.
 	 *
 	 * @param array $item A full wp_alm_links row (ARRAY_A).
@@ -145,11 +146,13 @@ class ALM_Link_Converter {
 		$updated = $wpdb->update(
 			$table,
 			array(
-				'provider' => $provider_id,
-				'status'   => ALM_Install::STATUS_ACTIVE,
+				'provider'      => $provider_id,
+				'category'      => ALM_Install::CATEGORY_AFFILIATE,
+				'modifier'      => null,
+				'classified_at' => current_time( 'mysql' ),
 			),
 			array( 'id' => (int) $item['id'] ),
-			array( '%s', '%s' ),
+			array( '%s', '%s', '%s', '%s' ),
 			array( '%d' )
 		);
 
@@ -158,11 +161,11 @@ class ALM_Link_Converter {
 
 	/**
 	 * Writes $new_url into the real post content via this link's own
-	 * content adapter, then updates the tracked record to match. Status
-	 * follows the resolved provider: a real, recognized network means a
-	 * real Affiliate Link; the "unclassified" fallback (no network
-	 * recognized this URL) keeps the link in Other Outbound, never
-	 * mislabeled as active just because an admin saved it.
+	 * content adapter, then updates the tracked record to match.
+	 * Category follows the resolved provider: a real, recognized
+	 * network means a real Affiliate Link; the "unclassified" fallback
+	 * (no network recognized this URL) keeps the link nonaffiliate,
+	 * never mislabeled as affiliate just because an admin saved it.
 	 *
 	 * @param array  $item
 	 * @param string $new_url
@@ -180,14 +183,19 @@ class ALM_Link_Converter {
 			return $result;
 		}
 
-		$status = ( ALM_Install::STATUS_UNCLASSIFIED === $provider_id ) ? ALM_Install::STATUS_UNCLASSIFIED : ALM_Install::STATUS_ACTIVE;
+		// 'unclassified' -- ALM_Provider_Generic::get_id()'s own literal,
+		// the always-matches fallback for "no real network recognized
+		// this URL" -- same comparison ALM_Scanner::upsert_link() uses.
+		$category = ( 'unclassified' === $provider_id ) ? ALM_Install::CATEGORY_NONAFFILIATE : ALM_Install::CATEGORY_AFFILIATE;
 
 		$data   = array(
-			'url'      => $new_url,
-			'provider' => $provider_id,
-			'status'   => $status,
+			'url'           => $new_url,
+			'provider'      => $provider_id,
+			'category'      => $category,
+			'modifier'      => null,
+			'classified_at' => current_time( 'mysql' ),
 		);
-		$format = array( '%s', '%s', '%s' );
+		$format = array( '%s', '%s', '%s', '%s', '%s' );
 
 		// A product thumbnail cached against this link's *old*
 		// destination must never linger once the URL itself has

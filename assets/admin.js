@@ -589,20 +589,20 @@
 			// ALM_Links_List_Table::row_action_url() URLs the old row
 			// actions used -- only where they're rendered changed.
 			ignoreLink.href = link.getAttribute( 'data-ignore-url' );
-			ignoreLink.hidden = 'ignored' === link.getAttribute( 'data-status' );
+			ignoreLink.hidden = 'ignored' === link.getAttribute( 'data-modifier' );
 			deleteLink.href = link.getAttribute( 'data-delete-url' );
 
 			// Remove from Post only makes sense for a confirmed-dead link
-			// -- see ALM_Link_Converter::remove(). data-status alone isn't
-			// enough (a merely not-rediscovered, never-confirmed-dead row
-			// also carries data-status="stale" -- see
-			// ALM_Links_List_Table::bulk_remove()'s own comment for why
-			// that distinction matters), hence the separate
-			// data-dead-confirmed attribute. AJAX-driven, not a plain
-			// nonce'd link like Ignore/Delete, since this can fail (the
-			// same content-changed-since-scan wall Save can hit) and needs
-			// to show that inline rather than just redirecting.
-			removeLink.hidden = '1' !== link.getAttribute( 'data-dead-confirmed' );
+			// -- see ALM_Link_Converter::remove(). A merely
+			// not-rediscovered row carries data-modifier="stale" instead
+			// of "dead" (see ALM_Links_List_Table::bulk_remove()'s own
+			// comment for why that distinction matters), so this alone
+			// is enough now -- no separate boolean attribute needed.
+			// AJAX-driven, not a plain nonce'd link like Ignore/Delete,
+			// since this can fail (the same content-changed-since-scan
+			// wall Save can hit) and needs to show that inline rather
+			// than just redirecting.
+			removeLink.hidden = 'dead' !== link.getAttribute( 'data-modifier' );
 
 			// Only present for a shortened link ALM_Shortener_Scanner has
 			// already resolved -- "Use this URL" fills the field with it
