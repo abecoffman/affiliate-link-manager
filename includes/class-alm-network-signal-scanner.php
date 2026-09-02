@@ -31,24 +31,23 @@ class ALM_Network_Signal_Scanner {
 	 * alm_known_unrecognized_network_domains filter.
 	 *
 	 * Once a real provider is built for one of these (see
-	 * includes/providers/ -- ALM_Provider_CJ, _Rakuten, and _ShopStyle
+	 * includes/providers/ -- ALM_Provider_CJ, _Rakuten, _ShopStyle,
+	 * _Awin, _ShareASale, _Sovrn, _Skimlinks, _Impact, and _Partnerize
 	 * all started life as an entry here), remove it from this list:
 	 * ALM_Provider_Registry::match_url() will claim those links
 	 * directly on the next scan, and they'll naturally stop appearing
-	 * here (having stopped being "unclassified" at all).
+	 * here (having stopped being "unclassified" at all). Skimlinks,
+	 * VigLink/Sovrn, Awin, Partnerize, and Impact.com were all removed
+	 * from here for exactly that reason when their real providers
+	 * shipped -- see CHANGELOG.md.
 	 *
 	 * @return array<string,string> domain => network label.
 	 */
 	public static function known_unrecognized_domains() {
 		$domains = array(
-			'go.skimresources.com' => 'Skimlinks',
-			'redirect.viglink.com' => 'Skimlinks / VigLink (Sovrn)',
-			'awin1.com'            => 'Awin',
-			'prf.hn'               => 'Partnerize',
-			'sjv.io'               => 'Impact.com',
-			'pntrs.com'            => 'Impact.com',
-			'pntrac.com'           => 'Impact.com',
-			'narrativ.com'         => 'Narrativ',
+			'narrativ.com'  => 'Narrativ',
+			'avantlink.com' => 'AvantLink',
+			'fxo.co'        => 'FlexOffers',
 		);
 
 		/**

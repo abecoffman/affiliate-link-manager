@@ -36,16 +36,16 @@ class NetworkSignalScannerIntegrationTest extends WP_UnitTestCase {
 	public function test_scan_finds_a_link_through_a_known_unrecognized_domain() {
 		$this->insert_link_row(
 			array(
-				'url'      => 'https://go.skimresources.com/?id=123&url=https://example.com',
+				'url'      => 'https://avantlink.com/click.php?tt=cl&merchant_id=123&website_id=456',
 				'provider' => 'unclassified',
 			)
 		);
 
 		$results = $this->scanner->scan();
 
-		$this->assertArrayHasKey( 'go.skimresources.com', $results );
-		$this->assertSame( 'Skimlinks', $results['go.skimresources.com']['label'] );
-		$this->assertSame( 1, $results['go.skimresources.com']['count'] );
+		$this->assertArrayHasKey( 'avantlink.com', $results );
+		$this->assertSame( 'AvantLink', $results['avantlink.com']['label'] );
+		$this->assertSame( 1, $results['avantlink.com']['count'] );
 	}
 
 	/**
@@ -83,13 +83,13 @@ class NetworkSignalScannerIntegrationTest extends WP_UnitTestCase {
 	public function test_scan_counts_multiple_links_through_the_same_domain() {
 		$this->insert_link_row(
 			array(
-				'url'      => 'https://go.skimresources.com/?id=1',
+				'url'      => 'https://avantlink.com/?id=1',
 				'provider' => 'unclassified',
 			)
 		);
 		$this->insert_link_row(
 			array(
-				'url'      => 'https://go.skimresources.com/?id=2',
+				'url'      => 'https://avantlink.com/?id=2',
 				'provider' => 'unclassified',
 				'location' => '1',
 			)
@@ -97,7 +97,7 @@ class NetworkSignalScannerIntegrationTest extends WP_UnitTestCase {
 
 		$results = $this->scanner->scan();
 
-		$this->assertSame( 2, $results['go.skimresources.com']['count'] );
+		$this->assertSame( 2, $results['avantlink.com']['count'] );
 	}
 
 	public function test_known_unrecognized_domains_is_filterable() {
@@ -132,7 +132,7 @@ class NetworkSignalScannerIntegrationTest extends WP_UnitTestCase {
 
 		$this->insert_link_row(
 			array(
-				'url'      => 'https://go.skimresources.com/?id=1',
+				'url'      => 'https://avantlink.com/?id=1',
 				'provider' => 'unclassified',
 			)
 		);
@@ -142,7 +142,7 @@ class NetworkSignalScannerIntegrationTest extends WP_UnitTestCase {
 
 		delete_transient( ALM_Network_Signal_Scanner::TRANSIENT_KEY );
 		$results_fresh = $this->scanner->scan();
-		$this->assertArrayHasKey( 'go.skimresources.com', $results_fresh );
+		$this->assertArrayHasKey( 'avantlink.com', $results_fresh );
 	}
 
 	/**

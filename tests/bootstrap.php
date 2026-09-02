@@ -68,6 +68,12 @@ require_once ALM_PATH . 'includes/providers/class-alm-provider-amazon.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-cj.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-rakuten.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-shopstyle.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-awin.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-shareasale.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-sovrn.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-skimlinks.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-impact.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-partnerize.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-generic.php';
 require_once ALM_PATH . 'includes/class-alm-provider-registry.php';
 

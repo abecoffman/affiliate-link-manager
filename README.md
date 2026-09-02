@@ -23,10 +23,11 @@ symlinked checkout (see [Install](#install) below).
 - **Checks link health** on candidates so a dead destination moves out of
   the opportunities list instead of sitting there unusable, and offers a
   one-click "Remove from Post" for links confirmed dead.
-- **Recognizes and classifies** links from six affiliate networks
-  (ShopMy, RewardStyle/LTK, Amazon, CJ, Rakuten, ShopStyle) through a
-  pluggable network-provider architecture. None of them build a new
-  tracked link automatically -- generate the real link on the network's
+- **Recognizes and classifies** links from twelve affiliate networks
+  (ShopMy, RewardStyle/LTK, Amazon, CJ, Rakuten, ShopStyle, Awin,
+  ShareASale, Sovrn Commerce/VigLink, Skimlinks, Impact.com, Partnerize)
+  through a pluggable network-provider architecture. None of them build
+  a new tracked link automatically -- generate the real link on the network's
   own site and paste it in via a link's Edit modal, which infers the
   provider and saves it.
 - **Keeps itself current automatically**: an hourly watchdog cron

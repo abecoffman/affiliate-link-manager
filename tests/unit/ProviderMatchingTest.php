@@ -15,6 +15,12 @@ use Brain\Monkey\Functions;
  * @covers \ALM_Provider_CJ
  * @covers \ALM_Provider_Rakuten
  * @covers \ALM_Provider_ShopStyle
+ * @covers \ALM_Provider_Awin
+ * @covers \ALM_Provider_ShareASale
+ * @covers \ALM_Provider_Sovrn
+ * @covers \ALM_Provider_Skimlinks
+ * @covers \ALM_Provider_Impact
+ * @covers \ALM_Provider_Partnerize
  * @covers \ALM_Provider_Generic
  * @covers \ALM_Provider_Registry
  */
@@ -147,6 +153,151 @@ class ProviderMatchingTest extends TestCase {
 		$this->assertFalse( $provider->can_wrap() );
 	}
 
+	/**
+	 * None of the six providers below are confirmed present in
+	 * honestlywtf's real data (unlike every provider above, each built
+	 * from an observed link) -- built proactively from each network's
+	 * own current publisher documentation instead, per explicit user
+	 * request to survey and cover major real-world affiliate networks
+	 * even before one happens to show up in a scan. Each dataProvider's
+	 * sample URLs use the network's own documented link shape; see each
+	 * provider class's own docblock for the source.
+	 *
+	 * @dataProvider provide_awin_urls
+	 */
+	public function test_awin_matches_its_redirect_domain( $url, $expected ) {
+		$provider = new \ALM_Provider_Awin();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_awin_urls() {
+		return array(
+			'documented cread.php format' => array( 'https://www.awin1.com/cread.php?awinmid=111&awinaffid=222&clickref=myheader&ued=https%3A%2F%2Fwww.zara.com%2Fproduct', true ),
+			'bare domain, no www'         => array( 'https://awin1.com/cread.php?awinmid=111&awinaffid=222', true ),
+			'lookalike domain'            => array( 'https://notawin1.com/cread.php?awinmid=111', false ),
+			'unrelated retailer'          => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_awin_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_Awin();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	/**
+	 * @dataProvider provide_shareasale_urls
+	 */
+	public function test_shareasale_matches_its_redirect_domain( $url, $expected ) {
+		$provider = new \ALM_Provider_ShareASale();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_shareasale_urls() {
+		return array(
+			'documented r.cfm format'   => array( 'https://www.shareasale.com/r.cfm?b=111111&u=987654&m=12345', true ),
+			'deep-link m-pr.cfm format' => array( 'https://shareasale.com/m-pr.cfm?merchantID=12345&userID=987654&productID=555', true ),
+			'lookalike domain'          => array( 'https://notshareasale.com/r.cfm?b=111111', false ),
+			'unrelated retailer'        => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_shareasale_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_ShareASale();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	/**
+	 * @dataProvider provide_sovrn_urls
+	 */
+	public function test_sovrn_matches_its_redirect_domains( $url, $expected ) {
+		$provider = new \ALM_Provider_Sovrn();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_sovrn_urls() {
+		return array(
+			'documented redirect.viglink.com format' => array( 'https://redirect.viglink.com/?key=abc123&u=https%3A%2F%2Fwww.zara.com%2Fproduct&type=ap', true ),
+			'sovrn.co vanity short link'             => array( 'https://sovrn.co/abc123', true ),
+			'lookalike domain'                       => array( 'https://notsovrn.co/abc123', false ),
+			'unrelated retailer'                     => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_sovrn_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_Sovrn();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	/**
+	 * @dataProvider provide_skimlinks_urls
+	 */
+	public function test_skimlinks_matches_its_redirect_domains( $url, $expected ) {
+		$provider = new \ALM_Provider_Skimlinks();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_skimlinks_urls() {
+		return array(
+			'documented go.skimresources.com format' => array( 'https://go.skimresources.com/?id=1X2&url=https%3A%2F%2Fwww.zara.com%2Fproduct&sref=https%3A%2F%2Fhonestlywtf.com%2Fsome-post', true ),
+			'fave.co vanity short link'              => array( 'https://fave.co/abc123', true ),
+			'lookalike domain'                       => array( 'https://go.notskimresources.com/?id=1X2', false ),
+			'unrelated retailer'                     => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_skimlinks_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_Skimlinks();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	/**
+	 * @dataProvider provide_impact_urls
+	 */
+	public function test_impact_matches_its_redirect_domain_family( $url, $expected ) {
+		$provider = new \ALM_Provider_Impact();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_impact_urls() {
+		return array(
+			'sjv.io, brand subdomain' => array( 'https://some-brand.sjv.io/c/123456/456789/7890?u=https%3A%2F%2Fwww.zara.com%2Fproduct', true ),
+			'pxf.io'                  => array( 'https://some-brand.pxf.io/c/123456/456789/7890', true ),
+			'7eer.net'                => array( 'https://some-brand.7eer.net/c/123456/456789/7890', true ),
+			'evyy.net'                => array( 'https://some-brand.evyy.net/c/123456/456789/7890', true ),
+			'pntrs.com'               => array( 'https://some-brand.pntrs.com/t/8-12345-67890-123', true ),
+			'pntrac.com'              => array( 'https://some-brand.pntrac.com/t/8-12345-67890-123', true ),
+			'lookalike domain'        => array( 'https://notsjv.io/c/123456', false ),
+			'unrelated retailer'      => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_impact_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_Impact();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
+	/**
+	 * @dataProvider provide_partnerize_urls
+	 */
+	public function test_partnerize_matches_its_redirect_domains( $url, $expected ) {
+		$provider = new \ALM_Provider_Partnerize();
+		$this->assertSame( $expected, $provider->matches_url( $url ) );
+	}
+
+	public static function provide_partnerize_urls() {
+		return array(
+			'documented prf.hn format'                   => array( 'https://prf.hn/click/camref:1101l79Q/destination:https://www.zara.com/product', true ),
+			'gopjn.com (Ascend by Partnerize/Pepperjam)' => array( 'https://some-brand.gopjn.com/t/2-123456-789012-34567', true ),
+			'lookalike domain'                           => array( 'https://notprf.hn/click/camref:1101l79Q', false ),
+			'unrelated retailer'                         => array( 'https://www.zara.com/us/en/product.html', false ),
+		);
+	}
+
+	public function test_partnerize_cannot_wrap_new_links() {
+		$provider = new \ALM_Provider_Partnerize();
+		$this->assertFalse( $provider->can_wrap() );
+	}
+
 	public function test_generic_provider_matches_everything() {
 		$provider = new \ALM_Provider_Generic();
 		$this->assertTrue( $provider->matches_url( 'https://anything.example.com/whatever' ) );
@@ -179,6 +330,26 @@ class ProviderMatchingTest extends TestCase {
 		$provider = $registry->match_url( 'https://go.shopmy.us/p-123' );
 
 		$this->assertSame( 'shopmy', $provider->get_id() );
+	}
+
+	public function test_registry_matches_awin_before_falling_back() {
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		$registry = new \ALM_Provider_Registry();
+		$provider = $registry->match_url( 'https://www.awin1.com/cread.php?awinmid=111&awinaffid=222' );
+
+		$this->assertSame( 'awin', $provider->get_id() );
+	}
+
+	public function test_registry_matches_impact_before_falling_back() {
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+
+		$registry = new \ALM_Provider_Registry();
+		$provider = $registry->match_url( 'https://some-brand.sjv.io/c/123456/456789/7890' );
+
+		$this->assertSame( 'impact', $provider->get_id() );
 	}
 
 	public function test_registry_lets_third_party_providers_register_via_filter() {

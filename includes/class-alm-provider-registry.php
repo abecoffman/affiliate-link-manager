@@ -25,6 +25,12 @@ class ALM_Provider_Registry {
 			new ALM_Provider_CJ(),
 			new ALM_Provider_Rakuten(),
 			new ALM_Provider_ShopStyle(),
+			new ALM_Provider_Awin(),
+			new ALM_Provider_ShareASale(),
+			new ALM_Provider_Sovrn(),
+			new ALM_Provider_Skimlinks(),
+			new ALM_Provider_Impact(),
+			new ALM_Provider_Partnerize(),
 		);
 
 		/**

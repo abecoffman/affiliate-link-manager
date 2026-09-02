@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Affiliate Link Manager
  * Description: Finds, classifies, and manages affiliate links across post content. Built on a pluggable network-provider architecture (ShopMy to start, more networks can register via the alm_register_providers filter) and a content-storage adapter architecture (plain post content by default, Beaver Builder when active, more via alm_register_content_adapters) so it works regardless of which affiliate networks or page builder a site uses.
- * Version:     1.23.0
+ * Version:     1.24.0
  * Author:      Abe Coffman
  * License:     GPL-2.0-or-later
  * Text Domain: affiliate-link-manager
@@ -14,7 +14,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'ALM_VERSION', '1.23.0' );
+define( 'ALM_VERSION', '1.24.0' );
 define( 'ALM_PATH', plugin_dir_path( __FILE__ ) );
 define( 'ALM_URL', plugin_dir_url( __FILE__ ) );
 define( 'ALM_FILE', __FILE__ );
@@ -28,6 +28,12 @@ require_once ALM_PATH . 'includes/providers/class-alm-provider-amazon.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-cj.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-rakuten.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-shopstyle.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-awin.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-shareasale.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-sovrn.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-skimlinks.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-impact.php';
+require_once ALM_PATH . 'includes/providers/class-alm-provider-partnerize.php';
 require_once ALM_PATH . 'includes/providers/class-alm-provider-generic.php';
 require_once ALM_PATH . 'includes/class-alm-provider-registry.php';
 

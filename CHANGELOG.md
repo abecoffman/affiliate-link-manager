@@ -4,6 +4,35 @@ All notable changes to this project are documented here. Reconstructed
 from git history up through 1.20.0; entries from that point on are
 written as the change ships.
 
+## [1.24.0] - 2026-09-02
+
+Added recognition for six more affiliate networks, built proactively
+from each network's own current publisher documentation rather than an
+observed honestlywtf link (every provider before this one started from
+real observed data) -- per explicit request to cover major real-world
+networks other sites use even before one happens to show up in a scan:
+`ALM_Provider_Awin`, `_ShareASale`, `_Sovrn` (Sovrn Commerce/VigLink,
+matches both `redirect.viglink.com` and the `sovrn.co` short domain),
+`_Skimlinks` (matches both `go.skimresources.com` and the `fave.co`
+short domain), `_Impact` (matches the documented Impact.com short-link
+domain family: `sjv.io`, `pxf.io`, `7eer.net`, `evyy.net`, `pntrs.com`,
+`pntrac.com`), and `_Partnerize` (matches `prf.hn` and `gopjn.com`,
+Pepperjam's legacy domain since its 2020 acquisition by Partnerize).
+All six are classify-only, same as every provider before them -- none
+has a public API this plugin could call to build a new tracked link.
+
+`ALM_Network_Signal_Scanner`'s known-but-not-yet-built domain list
+updated to match: Skimlinks/VigLink/Awin/Partnerize/Impact.com removed
+(now real providers, per the class's own established graduation
+pattern), AvantLink and FlexOffers added as two more real, verified
+networks that don't have a full provider yet.
+
+Test coverage: 34 new unit dataProvider cases (one per network's
+documented link format, plus a can_wrap()-is-false case for each) and
+2 new registry-resolution tests, all using real URL shapes sourced from
+each network's own current documentation (cited in each provider's
+class docblock), not guessed formats.
+
 ## [1.23.0] - 2026-09-02
 
 Removed ShopMy's ability to build a new tracked link (`wrap_url()`/

@@ -154,6 +154,36 @@
 	color: #4a3a94;
 }
 
+.alm-badge-awin {
+	background: #d3f2ec;
+	color: #0f6b5c;
+}
+
+.alm-badge-shareasale {
+	background: #fbdcee;
+	color: #99236e;
+}
+
+.alm-badge-sovrn {
+	background: #e0e1fa;
+	color: #3b3ea3;
+}
+
+.alm-badge-skimlinks {
+	background: #ffe2d4;
+	color: #b8451a;
+}
+
+.alm-badge-impact {
+	background: #dde6ee;
+	color: #35566f;
+}
+
+.alm-badge-partnerize {
+	background: #f7dde3;
+	color: #8e2f45;
+}
+
 .alm-badge-unclassified {
 	background: #f0f0f1;
 	color: #646970;
