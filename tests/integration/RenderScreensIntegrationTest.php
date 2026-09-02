@@ -97,10 +97,10 @@ class RenderScreensIntegrationTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( '<table', $html, 'The WP_List_Table markup must actually be present.' );
 	}
 
-	public function test_render_settings_shows_the_shopmy_fields() {
+	public function test_render_settings_shows_recognized_networks() {
 		$html = $this->capture( array( $this->admin, 'render_settings' ) );
 
-		$this->assertStringContainsString( 'alm_shopmy_affiliate_id', $html );
+		$this->assertStringContainsString( 'ShopMy', $html );
 		$this->assertStringContainsString( 'Networks', $html );
 		$this->assertStringContainsString( 'Scan behavior', $html );
 	}

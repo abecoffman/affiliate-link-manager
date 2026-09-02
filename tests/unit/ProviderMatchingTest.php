@@ -152,64 +152,13 @@ class ProviderMatchingTest extends TestCase {
 		$this->assertTrue( $provider->matches_url( 'https://anything.example.com/whatever' ) );
 	}
 
-	public function test_shopmy_is_not_configured_without_an_affiliate_id() {
-		Functions\when( 'get_option' )->justReturn( '' );
-
+	public function test_shopmy_cannot_wrap_new_links() {
+		// No public creator API to verify a destination is actually
+		// monetizable through ShopMy -- see ALM_Provider_ShopMy's class
+		// docblock. Same classify-only reasoning as every other provider
+		// here.
 		$provider = new \ALM_Provider_ShopMy();
-		$this->assertFalse( $provider->is_configured() );
 		$this->assertFalse( $provider->can_wrap() );
-	}
-
-	public function test_shopmy_wrap_url_fails_when_not_configured() {
-		Functions\when( 'get_option' )->justReturn( '' );
-
-		$provider = new \ALM_Provider_ShopMy();
-		$result   = $provider->wrap_url( 'https://www.zara.com/product' );
-
-		$this->assertInstanceOf( \WP_Error::class, $result );
-	}
-
-	public function test_shopmy_wrap_url_builds_the_documented_redirect_format() {
-		Functions\when( 'get_option' )->alias(
-			function ( $name, $default_value = '' ) {
-				return \ALM_Provider_ShopMy::OPTION_AFFILIATE_ID === $name ? 'sDXyBS' : $default_value;
-			}
-		);
-		Functions\when( 'add_query_arg' )->alias(
-			function ( $args, $url ) {
-				return $url . '?' . http_build_query( $args );
-			}
-		);
-
-		$provider = new \ALM_Provider_ShopMy();
-		$result   = $provider->wrap_url( 'https://www.zara.com/product' );
-
-		$this->assertStringStartsWith( 'https://go.shopmy.us/apx/sDXyBS?', $result );
-		$this->assertStringContainsString( 'url=', $result );
-	}
-
-	public function test_shopmy_wrap_url_includes_collection_id_when_set() {
-		Functions\when( 'get_option' )->alias(
-			function ( $name, $default_value = '' ) {
-				if ( \ALM_Provider_ShopMy::OPTION_AFFILIATE_ID === $name ) {
-					return 'sDXyBS';
-				}
-				if ( \ALM_Provider_ShopMy::OPTION_COLLECTION_ID === $name ) {
-					return '123';
-				}
-				return $default_value;
-			}
-		);
-		Functions\when( 'add_query_arg' )->alias(
-			function ( $args, $url ) {
-				return $url . '?' . http_build_query( $args );
-			}
-		);
-
-		$provider = new \ALM_Provider_ShopMy();
-		$result   = $provider->wrap_url( 'https://www.zara.com/product' );
-
-		$this->assertStringContainsString( 'c=123', $result );
 	}
 
 	public function test_registry_falls_back_to_generic_provider() {

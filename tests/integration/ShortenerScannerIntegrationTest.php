@@ -40,8 +40,6 @@ class ShortenerScannerIntegrationTest extends WP_UnitTestCase {
 		ALM_Install::activate();
 		$wpdb->query( 'TRUNCATE TABLE ' . ALM_Install::table_name() ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, test-only truncate between runs.
 
-		update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, 'sDXyBS' );
-
 		$providers     = new ALM_Provider_Registry();
 		$this->scanner = new ALM_Shortener_Scanner( new NoSleepShortenerResolver(), $providers );
 	}

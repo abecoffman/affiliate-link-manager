@@ -2,11 +2,12 @@
 /**
  * Settings screen: network configuration and scan/classification
  * behavior, in one screen. Merged from what used to be two separate
- * top-level screens (Providers + Settings) -- with 5 of 6 registered
- * networks having nothing to configure beyond "recognized," a whole
- * separate menu item for that didn't earn its keep. Every field here
- * still writes to the same independent options it always did; this is
- * a template/menu consolidation, not a data-model change.
+ * top-level screens (Providers + Settings) -- with every registered
+ * network being classify-only (recognized on sight, nothing to
+ * configure; see each provider's own class docblock for why none of
+ * them build a new tracked link), a whole separate menu item for that
+ * didn't earn its keep. The Networks section below is read-only
+ * display; only the Scan behavior section actually submits anything.
  *
  * ALM_Provider_Generic is deliberately excluded from $providers before
  * this ever runs (see ALM_Admin::render_settings()) -- it's a fallback
@@ -21,11 +22,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-$classify_only_labels = array();
+$provider_labels = array();
 foreach ( $providers as $provider ) {
-	if ( ! ( $provider instanceof ALM_Provider_ShopMy ) ) {
-		$classify_only_labels[] = $provider->get_label();
-	}
+	$provider_labels[] = $provider->get_label();
 }
 ?>
 <div class="wrap alm-wrap">
@@ -46,34 +45,19 @@ foreach ( $providers as $provider ) {
 
 			<table class="form-table">
 				<tr>
-					<th scope="row"><?php esc_html_e( 'ShopMy', 'affiliate-link-manager' ); ?></th>
+					<th scope="row"><?php esc_html_e( 'Recognized', 'affiliate-link-manager' ); ?></th>
 					<td>
-						<p>
-							<label for="alm_shopmy_affiliate_id"><?php esc_html_e( 'Affiliate ID', 'affiliate-link-manager' ); ?></label><br>
-							<input type="text" id="alm_shopmy_affiliate_id" name="alm_shopmy_affiliate_id" class="regular-text" value="<?php echo esc_attr( get_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, '' ) ); ?>">
-						</p>
-						<p>
-							<label for="alm_shopmy_collection_id"><?php esc_html_e( 'Default collection ID (optional)', 'affiliate-link-manager' ); ?></label><br>
-							<input type="text" id="alm_shopmy_collection_id" name="alm_shopmy_collection_id" class="regular-text" value="<?php echo esc_attr( get_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID, '' ) ); ?>">
+						<p class="description">
+							<?php
+							printf(
+								/* translators: %s: comma-separated list of network names */
+								esc_html__( '%s -- classified automatically when found. This plugin does not build or edit tracked links for any network; generate the link on the network\'s own site and paste it in via a link\'s Edit modal to track it here.', 'affiliate-link-manager' ),
+								esc_html( implode( ', ', $provider_labels ) )
+							);
+							?>
 						</p>
 					</td>
 				</tr>
-				<?php if ( ! empty( $classify_only_labels ) ) : ?>
-					<tr>
-						<th scope="row"><?php esc_html_e( 'Also recognized', 'affiliate-link-manager' ); ?></th>
-						<td>
-							<p class="description">
-								<?php
-								printf(
-									/* translators: %s: comma-separated list of network names */
-									esc_html__( '%s -- classified automatically, but not converted/wrapped by this plugin.', 'affiliate-link-manager' ),
-									esc_html( implode( ', ', $classify_only_labels ) )
-								);
-								?>
-							</p>
-						</td>
-					</tr>
-				<?php endif; ?>
 			</table>
 
 			<div class="alm-card-header alm-card-header-secondary">

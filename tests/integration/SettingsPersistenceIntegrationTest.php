@@ -4,11 +4,13 @@
  * (ALM_Admin::persist_settings_from_request(), dispatched by
  * save_settings()/handle_settings_forms()) -- previously had zero
  * PHP-level coverage despite this being the only functional part of
- * the Settings screen. Confirms the ShopMy affiliate/collection ID
- * fields and the excluded-domains textarea actually persist to
- * options, closing the gap a stale project note once described as a
- * "dead settings toggle" (removed in an earlier round; the rest of
- * this screen has been fully wired ever since).
+ * the Settings screen. Confirms the excluded-domains textarea actually
+ * persists to its option, closing the gap a stale project note once
+ * described as a "dead settings toggle" (removed in an earlier round;
+ * the rest of this screen has been fully wired ever since). The
+ * Networks section is read-only display -- see includes/views/settings.php
+ * and each provider's own class docblock -- so excluded domains is the
+ * only field this screen actually submits.
  *
  * persist_settings_from_request() is called directly via reflection
  * rather than through save_settings() itself, which always ends in
@@ -52,9 +54,7 @@ class SettingsPersistenceIntegrationTest extends WP_UnitTestCase {
 	}
 
 	public function tear_down() {
-		unset( $_POST['alm_shopmy_affiliate_id'], $_POST['alm_shopmy_collection_id'], $_POST['alm_candidate_excluded_domains'], $_POST['alm_settings_nonce'] );
-		delete_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID );
-		delete_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID );
+		unset( $_POST['alm_candidate_excluded_domains'], $_POST['alm_settings_nonce'] );
 		delete_option( 'alm_candidate_excluded_domains' );
 		parent::tear_down();
 	}
@@ -70,22 +70,6 @@ class SettingsPersistenceIntegrationTest extends WP_UnitTestCase {
 		$reflection->invoke( $this->admin );
 	}
 
-	public function test_shopmy_affiliate_id_persists() {
-		$_POST['alm_shopmy_affiliate_id'] = 'sDXyBS';
-
-		$this->invoke_persist();
-
-		$this->assertSame( 'sDXyBS', get_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID ) );
-	}
-
-	public function test_shopmy_collection_id_persists() {
-		$_POST['alm_shopmy_collection_id'] = '123';
-
-		$this->invoke_persist();
-
-		$this->assertSame( '123', get_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID ) );
-	}
-
 	public function test_excluded_domains_textarea_persists() {
 		$_POST['alm_candidate_excluded_domains'] = "sisterblog.example\nmagazine.example";
 
@@ -94,34 +78,33 @@ class SettingsPersistenceIntegrationTest extends WP_UnitTestCase {
 		$this->assertSame( "sisterblog.example\nmagazine.example", get_option( 'alm_candidate_excluded_domains' ) );
 	}
 
-	public function test_fields_are_sanitized_on_the_way_in() {
-		$_POST['alm_shopmy_affiliate_id'] = '<script>alert(1)</script>sDXyBS';
+	public function test_excluded_domains_are_sanitized_on_the_way_in() {
+		$_POST['alm_candidate_excluded_domains'] = '<script>alert(1)</script>sisterblog.example';
 
 		$this->invoke_persist();
 
-		$this->assertStringNotContainsString( '<script>', get_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID ) );
+		$this->assertStringNotContainsString( '<script>', get_option( 'alm_candidate_excluded_domains' ) );
 	}
 
 	public function test_a_field_absent_from_the_request_is_left_untouched() {
-		update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, 'already-set' );
+		update_option( 'alm_candidate_excluded_domains', 'already-set.example' );
 
-		// Only posting the excluded-domains field this time.
-		$_POST['alm_candidate_excluded_domains'] = 'magazine.example';
+		// Deliberately posting nothing this time.
 
 		$this->invoke_persist();
 
-		$this->assertSame( 'already-set', get_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID ), 'A field the form did not submit must not be reset.' );
+		$this->assertSame( 'already-set.example', get_option( 'alm_candidate_excluded_domains' ), 'A field the form did not submit must not be reset.' );
 	}
 
 	public function test_handle_settings_forms_does_nothing_without_a_posted_nonce() {
-		update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, 'unchanged' );
-		$_POST['alm_shopmy_affiliate_id'] = 'should-not-be-saved';
+		update_option( 'alm_candidate_excluded_domains', 'unchanged.example' );
+		$_POST['alm_candidate_excluded_domains'] = 'should-not-be-saved.example';
 		// Deliberately no alm_settings_nonce posted -- handle_settings_forms()
 		// must never even attempt a save, and therefore never reach
 		// save_settings()'s wp_safe_redirect()+exit tail, so this is safe
 		// to call directly through the real, unmocked entry point.
 		$this->admin->handle_settings_forms();
 
-		$this->assertSame( 'unchanged', get_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID ) );
+		$this->assertSame( 'unchanged.example', get_option( 'alm_candidate_excluded_domains' ) );
 	}
 }

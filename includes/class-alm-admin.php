@@ -240,7 +240,7 @@ class ALM_Admin {
 					'bulkRemoveWarn'       => __( 'Remove all selected dead links from their posts? This edits post content directly and can\'t be undone from here. Anything not confirmed dead is skipped.', 'affiliate-link-manager' ),
 					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
 					'forceConvertWarn'     => __( 'This link is currently tracked under %s. Saving will replace it -- are you sure?', 'affiliate-link-manager' ),
-					/* translators: %s: provider label, e.g. "ShopMy" */
+					/* translators: %s: provider label, e.g. "RewardStyle / LTK" */
 					'bulkConvertWarn'      => __( 'Convert all selected links to %s? This replaces the tracked link for any that already have one under a different network.', 'affiliate-link-manager' ),
 				),
 			)
@@ -640,12 +640,12 @@ class ALM_Admin {
 	}
 
 	/**
-	 * Saves the whole (merged) Settings screen -- both the Networks
-	 * section (ShopMy's own fields; every other registered network is
-	 * classify-only with nothing to save) and the Scan behavior section
-	 * (excluded domains) -- in one submit, one nonce. Used to be two
-	 * separate forms/nonces/screens; see class docblock and
-	 * render_settings().
+	 * Saves the whole (merged) Settings screen -- in practice just the
+	 * Scan behavior section (excluded domains) today, since every
+	 * registered network is classify-only with nothing of its own to
+	 * save (see each provider's class docblock; the Networks section is
+	 * read-only display). Used to be two separate forms/nonces/screens;
+	 * see class docblock and render_settings().
 	 *
 	 * @return void
 	 */
@@ -672,14 +672,6 @@ class ALM_Admin {
 	 */
 	private function persist_settings_from_request() {
 		// The nonce was already verified in handle_settings_forms() before this method is called.
-		if ( isset( $_POST['alm_shopmy_affiliate_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, sanitize_text_field( wp_unslash( $_POST['alm_shopmy_affiliate_id'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
-		}
-
-		if ( isset( $_POST['alm_shopmy_collection_id'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
-			update_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID, sanitize_text_field( wp_unslash( $_POST['alm_shopmy_collection_id'] ) ) ); // phpcs:ignore WordPress.Security.NonceVerification.Missing
-		}
-
 		// Read by ALM_Candidate_Classifier on every scan -- this is the
 		// site owner's own no-code way to teach it about domains only
 		// this site would know are noise (a sister blog, a magazine this

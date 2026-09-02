@@ -4,6 +4,29 @@ All notable changes to this project are documented here. Reconstructed
 from git history up through 1.20.0; entries from that point on are
 written as the change ships.
 
+## [1.23.0] - 2026-09-02
+
+Removed ShopMy's ability to build a new tracked link (`wrap_url()`/
+`can_wrap()`), the plugin's only remaining wrap-capable provider.
+ShopMy has no public creator API to verify a destination is actually
+monetizable through their network -- the previous implementation built
+the documented redirect-wrapper URL by hand with no way to confirm it,
+which risked handing out a link that doesn't actually earn anything.
+ShopMy is now classify-only, same as every other registered network
+(RewardStyle, Amazon, CJ, Rakuten, ShopStyle): recognized on sight,
+labeled correctly, but this plugin never builds or edits the link
+itself -- generate it on the network's own site and paste it in via a
+link's Edit modal to track it here. `go.shopmy.us` link recognition is
+unaffected.
+
+The Settings screen's ShopMy affiliate/collection ID fields are gone
+(nothing left to configure) in favor of a plain read-only list of
+recognized networks; the underlying options are deleted on uninstall
+for any site that saved one before this shipped. The generic
+"Convert to [Provider]" bulk-action/Edit-modal wrap mechanism itself is
+unchanged and stays in place for a future provider that does support
+it -- it just has no qualifying provider today.
+
 ## [1.22.1] - 2026-08-15
 
 Follow-up TL-style cleanup pass on the 1.22.0 category/modifier refactor

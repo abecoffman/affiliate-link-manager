@@ -23,9 +23,12 @@ symlinked checkout (see [Install](#install) below).
 - **Checks link health** on candidates so a dead destination moves out of
   the opportunities list instead of sitting there unusable, and offers a
   one-click "Remove from Post" for links confirmed dead.
-- **Converts** a candidate into a real tracked affiliate link through a
-  pluggable network-provider architecture (ShopMy today; Amazon, CJ,
-  Rakuten, and ShopStyle are recognized for classification).
+- **Recognizes and classifies** links from six affiliate networks
+  (ShopMy, RewardStyle/LTK, Amazon, CJ, Rakuten, ShopStyle) through a
+  pluggable network-provider architecture. None of them build a new
+  tracked link automatically -- generate the real link on the network's
+  own site and paste it in via a link's Edit modal, which infers the
+  provider and saves it.
 - **Keeps itself current automatically**: an hourly watchdog cron
   incrementally rescans posts modified since the last check, and quietly
   cleans up tracking rows for links that were never rediscovered, all

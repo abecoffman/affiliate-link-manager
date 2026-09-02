@@ -140,12 +140,16 @@ class ALM_Links_List_Table extends WP_List_Table {
 
 	/**
 	 * One "Convert to [Provider]" entry per registered, configured,
-	 * can_wrap()-capable provider (today: just ShopMy, once an affiliate
-	 * ID is set) -- same gate the row-level Edit modal uses, so the two
-	 * entry points never offer a provider one can do that the other
-	 * can't. Providers that can only reclassify (RewardStyle, Generic)
-	 * don't get a bulk entry -- that's a per-row decision made in the
-	 * Edit modal, not something to fire at scale from a checkbox list.
+	 * can_wrap()-capable provider -- none of the currently-registered
+	 * networks qualify (every one, ShopMy included, is classify-only;
+	 * see each provider's own class docblock for why), so this list is
+	 * empty in practice today. The mechanism stays in place for a
+	 * future provider that does support it, gated the same way the
+	 * row-level Edit modal is, so the two entry points could never
+	 * offer a provider one can do that the other can't. Providers that
+	 * can only reclassify don't get a bulk entry regardless -- that's a
+	 * per-row decision made in the Edit modal, not something to fire at
+	 * scale from a checkbox list.
 	 *
 	 * Grouped into two <optgroup>s (native WP_List_Table support since
 	 * 5.6 -- a nested array value becomes an optgroup keyed by its own

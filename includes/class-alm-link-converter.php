@@ -7,13 +7,16 @@
  *   only ever edits a destination URL; the provider is always inferred
  *   from it via ALM_Provider_Registry::match_url(), the same matching
  *   logic the scanner itself uses -- never manually picked. This is
- *   also the only way to attach a link for a provider that can't build
- *   one itself (RewardStyle/LTK today): the admin generates the real
+ *   also the only way to attach a link for any of these providers
+ *   today, since none of them build one themselves (see each
+ *   provider's own class docblock): the admin generates the real
  *   tracked link on the network's own site and pastes the result in.
  * - convert() -- the "Convert to [Provider]" bulk action. A provider is
  *   chosen explicitly (only ever a can_wrap()-capable, configured one,
  *   see ALM_Links_List_Table::get_bulk_actions()) and wrap_url() builds
- *   a new tracked URL from whatever's already there.
+ *   a new tracked URL from whatever's already there. No currently
+ *   registered provider qualifies -- this exists for a future one that
+ *   does.
  * - remove() -- "Remove from Post", for a confirmed-dead
  *   (category=nonaffiliate, modifier=dead) link. Unlike the two above,
  *   this doesn't rewrite the row -- it deletes it, since once the link

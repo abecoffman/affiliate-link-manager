@@ -357,8 +357,13 @@ class ALM_Install {
 		delete_option( 'alm_incremental_scan_started_at' );
 		delete_option( 'alm_last_incremental_scan_time' );
 		delete_option( 'alm_last_incremental_scan_delta' );
-		delete_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID );
-		delete_option( ALM_Provider_ShopMy::OPTION_COLLECTION_ID );
+		// Hardcoded literals, not ALM_Provider_ShopMy::OPTION_*, since
+		// that provider no longer defines these constants (it dropped
+		// wrap_url() support entirely -- see its class docblock). Kept
+		// here only to clean up the options on a site that saved one
+		// before that change shipped.
+		delete_option( 'alm_shopmy_affiliate_id' );
+		delete_option( 'alm_shopmy_collection_id' );
 
 		// ALM_Background_Runner's per-task run state -- see its own
 		// docblock. Deliberately named/deleted individually rather than

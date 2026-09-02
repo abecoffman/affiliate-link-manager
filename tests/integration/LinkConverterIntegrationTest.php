@@ -28,11 +28,31 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 		ALM_Install::activate();
 		$wpdb->query( 'TRUNCATE TABLE ' . ALM_Install::table_name() ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared -- fixed table name, test-only truncate between runs.
 
-		update_option( ALM_Provider_ShopMy::OPTION_AFFILIATE_ID, 'sDXyBS' );
+		// No currently-registered provider can actually build a new
+		// tracked link (every one is classify-only -- see each
+		// provider's own class docblock, e.g. ALM_Provider_ShopMy).
+		// Register a minimal fake one via the plugin's own third-party
+		// extension point so convert()'s wrap_url() branch still gets
+		// real coverage.
+		add_filter( 'alm_register_providers', array( __CLASS__, 'add_fake_wrapping_provider' ) );
 
 		$providers       = new ALM_Provider_Registry();
 		$adapters        = new ALM_Adapter_Registry();
 		$this->converter = new ALM_Link_Converter( $providers, $adapters );
+	}
+
+	public function tear_down() {
+		remove_filter( 'alm_register_providers', array( __CLASS__, 'add_fake_wrapping_provider' ) );
+		parent::tear_down();
+	}
+
+	/**
+	 * @param ALM_Provider[] $providers
+	 * @return ALM_Provider[]
+	 */
+	public static function add_fake_wrapping_provider( array $providers ) {
+		$providers[] = new ALM_Test_Fake_Wrapping_Provider();
+		return $providers;
 	}
 
 	public function test_convert_wraps_and_persists_for_a_wrap_capable_provider() {
@@ -55,17 +75,17 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 			)
 		);
 
-		$result = $this->converter->convert( $item, 'shopmy' );
+		$result = $this->converter->convert( $item, 'fake_wrapping' );
 		$this->assertTrue( $result );
 
 		$row = $this->get_link_row( $item['id'] );
-		$this->assertSame( 'shopmy', $row['provider'] );
+		$this->assertSame( 'fake_wrapping', $row['provider'] );
 		$this->assertSame( ALM_Install::CATEGORY_AFFILIATE, $row['category'] );
-		$this->assertStringContainsString( 'go.shopmy.us/apx/sDXyBS', $row['url'] );
+		$this->assertStringContainsString( 'track.fake-network.example/out', $row['url'] );
 
 		clean_post_cache( $post_id );
 		$fresh = get_post( $post_id );
-		$this->assertStringContainsString( 'go.shopmy.us/apx/sDXyBS', $fresh->post_content );
+		$this->assertStringContainsString( 'track.fake-network.example/out', $fresh->post_content );
 		$this->assertStringNotContainsString( 'href="https://www.zara.com/product"', $fresh->post_content );
 	}
 
@@ -136,7 +156,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 			)
 		);
 
-		$result = $this->converter->convert( $item, 'shopmy' );
+		$result = $this->converter->convert( $item, 'fake_wrapping' );
 		$this->assertInstanceOf( WP_Error::class, $result );
 
 		$row = $this->get_link_row( $item['id'] );
@@ -192,10 +212,11 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * A pasted-in ShopMy URL never goes through wrap_url() -- the admin
-	 * is providing the exact destination themselves, not asking this
-	 * plugin to generate one, even though ShopMy happens to be
-	 * can_wrap()-capable.
+	 * A pasted-in URL never goes through wrap_url() -- the admin is
+	 * providing the exact destination themselves, not asking this
+	 * plugin to generate one, even for a provider that happens to be
+	 * can_wrap()-capable (the fake_wrapping test provider here; no real
+	 * registered provider is today -- see set_up()).
 	 */
 	public function test_save_url_never_wraps_a_url_the_admin_provided_directly() {
 		$post_id = self::factory()->post->create(
@@ -217,12 +238,12 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 			)
 		);
 
-		$pasted_url = 'https://go.shopmy.us/p-already-generated-manually';
+		$pasted_url = 'https://track.fake-network.example/out?dest=already-generated-manually';
 		$result     = $this->converter->save_url( $item, $pasted_url );
 		$this->assertTrue( $result );
 
 		$row = $this->get_link_row( $item['id'] );
-		$this->assertSame( 'shopmy', $row['provider'] );
+		$this->assertSame( 'fake_wrapping', $row['provider'] );
 		$this->assertSame( $pasted_url, $row['url'], 'wrap_url() must not have run -- the pasted URL is used exactly as given.' );
 	}
 
@@ -398,7 +419,7 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 			)
 		);
 
-		$result = $this->converter->convert( $item, 'shopmy' );
+		$result = $this->converter->convert( $item, 'fake_wrapping' );
 		$this->assertTrue( $result );
 
 		$row = $this->get_link_row( $item['id'] );
@@ -567,5 +588,37 @@ class LinkConverterIntegrationTest extends WP_UnitTestCase {
 
 		// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- table name, not user input.
 		return $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table} WHERE id = %d", $id ), ARRAY_A );
+	}
+}
+
+/**
+ * A minimal wrap()-capable provider, registered only for this test file
+ * via the same `alm_register_providers` filter a real third-party
+ * provider would use. Exercises ALM_Link_Converter's wrap_url() code
+ * path without depending on a *real* network actually supporting it --
+ * none of the currently-registered ones do; see ALM_Provider_ShopMy's
+ * class docblock for why.
+ */
+class ALM_Test_Fake_Wrapping_Provider extends ALM_Provider {
+
+	public function get_id() {
+		return 'fake_wrapping';
+	}
+
+	public function get_label() {
+		return 'Fake Wrapping Network';
+	}
+
+	public function matches_url( $url ) {
+		$host = wp_parse_url( $url, PHP_URL_HOST );
+		return is_string( $host ) && 'track.fake-network.example' === strtolower( $host );
+	}
+
+	public function can_wrap() {
+		return true;
+	}
+
+	public function wrap_url( $url, array $args = array() ) {
+		return 'https://track.fake-network.example/out?dest=' . rawurlencode( $url );
 	}
 }

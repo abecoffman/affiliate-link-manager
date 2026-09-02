@@ -69,33 +69,17 @@ test.describe('Affiliate Links admin screens', () => {
 			'--post_content=<p>Follow along on <a href="https://www.instagram.com/example">Instagram</a>.</p>',
 		]);
 
-		// Its own dedicated fixture, separate from the long-URL one above --
-		// the single-row Edit modal test converts that one, so the bulk
-		// convert test needs a candidate of its own rather than racing it.
-		wp([
-			'post', 'create',
-			'--post_status=publish',
-			'--post_title=ALM E2E bulk-convert fixture post',
-			'--post_content=<p>Shop the <a href="https://www.a-bulk-convert-retailer.example/product">dress</a>.</p>',
-		]);
-
-		// A fourth, dedicated to the manual-paste-a-URL test -- RewardStyle
-		// can't wrap_url() itself (see ALM_Provider_RewardStyle), so
-		// pasting in a link already generated on their own site is the
-		// *only* way to attach one, not just an alternate path.
+		// A third, dedicated to the manual-paste-a-URL test -- no
+		// registered provider can wrap_url() itself (every one is
+		// classify-only; see each provider's own class docblock), so
+		// pasting in a link already generated on the network's own site
+		// is the *only* way to attach one, not just an alternate path.
 		wp([
 			'post', 'create',
 			'--post_status=publish',
 			'--post_title=ALM E2E manual-paste fixture post',
 			'--post_content=<p>Get the <a href="https://www.a-manual-paste-retailer.example/product">jacket</a>.</p>',
 		]);
-
-		// ShopMy's wrap_url() is a pure string transform keyed off this
-		// affiliate id (see ALM_Provider_ShopMy) -- Convert only appears
-		// as a row/bulk action once a provider is actually configured,
-		// same gate ALM_Admin::get_provider_capabilities() exposes to the
-		// Edit modal's JS.
-		wp(['option', 'update', 'alm_shopmy_affiliate_id', 'sDXyBS']);
 	});
 
 	// No separate Providers screen -- folded into Settings (see
@@ -266,28 +250,17 @@ test.describe('Affiliate Links admin screens', () => {
 	});
 
 	/**
-	 * The bulk path: "Convert to ShopMy" only appears because ShopMy
-	 * was configured in beforeAll (can_wrap() gates it, same as the
-	 * row-level Edit modal) -- proves the bulk action wiring in
-	 * ALM_Links_List_Table::process_bulk_action() end to end, including
-	 * the JS confirm() this plugin's own admin.js adds before
-	 * submitting a convert_* bulk action.
+	 * No registered provider is can_wrap()-capable today (every one is
+	 * classify-only -- see each provider's own class docblock), so the
+	 * "Convert to [Provider]" bulk action group never gets any entries.
+	 * Real, if boring, coverage worth keeping: this must degrade
+	 * gracefully, not leave a broken/empty optgroup behind.
 	 */
-	test('Bulk "Convert to ShopMy" converts selected Candidate links', async ({ page }) => {
-		page.on('dialog', (dialog) => dialog.accept());
-
+	test('Bulk actions dropdown has no "Convert to" entries', async ({ page }) => {
 		await page.goto('/wp-admin/admin.php?page=affiliate-links-links');
 
-		const row = page.getByRole('row', { name: /dress/ });
-		await expect(row).toBeVisible();
-		await row.getByRole('checkbox').check();
-
-		await page.locator('#bulk-action-selector-top').selectOption('convert_shopmy');
-		await page.locator('#doaction').click();
-
-		await expect(page.getByText(/Converted \d+ link/)).toBeVisible();
-		const updatedRow = page.getByRole('row', { name: /dress/ });
-		await expect(updatedRow.locator('.alm-badge-shopmy')).toBeVisible();
+		const options = page.locator('#bulk-action-selector-top option');
+		await expect(options.filter({ hasText: 'Convert to' })).toHaveCount(0);
 	});
 
 	for (const screen of screens) {

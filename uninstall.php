@@ -14,7 +14,5 @@ if ( ! defined( 'WP_UNINSTALL_PLUGIN' ) ) {
 }
 
 require_once __DIR__ . '/includes/class-alm-install.php';
-require_once __DIR__ . '/includes/class-alm-provider.php';
-require_once __DIR__ . '/includes/providers/class-alm-provider-shopmy.php';
 
 ALM_Install::uninstall();
